@@ -84,10 +84,7 @@ thought_processor = ThoughtProcessor(storage_path)
 
 logger.info("DevilMCP Server initialized")
 
-
-# ============================================================================
-# CONTEXT MANAGEMENT TOOLS
-# ============================================================================
+# Context management tools
 
 @mcp.tool()
 def analyze_project_structure(project_path: str) -> Dict:
@@ -168,9 +165,7 @@ def search_context(query: str, context_type: str = "all") -> List[Dict]:
     return context_mgr.search_context(query, context_type)
 
 
-# ============================================================================
-# DECISION TRACKING TOOLS
-# ============================================================================
+# Decision tracking tools
 
 @mcp.tool()
 def log_decision(
@@ -290,9 +285,7 @@ def get_decision_statistics() -> Dict:
     return decision_tracker.get_decision_statistics()
 
 
-# ============================================================================
-# CHANGE ANALYSIS TOOLS
-# ============================================================================
+# Change analysis tools
 
 @mcp.tool()
 def log_change(
@@ -422,9 +415,7 @@ def detect_change_conflicts(proposed_change: Dict) -> List[Dict]:
     return change_analyzer.detect_change_conflicts(proposed_change)
 
 
-# ============================================================================
-# CASCADE FAILURE DETECTION TOOLS
-# ============================================================================
+# Cascade failure detection tools
 
 @mcp.tool()
 def build_dependency_graph(dependencies: Dict[str, Dict]) -> Dict:
@@ -537,9 +528,7 @@ def suggest_safe_changes(target: str, proposed_change: str) -> Dict:
     return cascade_detector.suggest_safe_changes(target, proposed_change)
 
 
-# ============================================================================
-# THOUGHT PROCESS MANAGEMENT TOOLS
-# ============================================================================
+# Thought process management tools
 
 @mcp.tool()
 def start_thought_session(session_id: str, context: Dict) -> Dict:
@@ -703,9 +692,7 @@ def get_session_summary(session_id: str) -> Dict:
     return thought_processor.get_session_summary(session_id)
 
 
-# ============================================================================
-# UTILITY TOOLS
-# ============================================================================
+# Utility tools
 
 @mcp.tool()
 def get_mcp_statistics() -> Dict:
@@ -733,9 +720,7 @@ def get_mcp_statistics() -> Dict:
     }
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
+# Main entry point
 
 def main():
     """Main entry point for the DevilMCP server."""
