@@ -420,7 +420,7 @@ You get:
 DevilMCP requires no changes to your existing code. It:
 - Runs as a separate service
 - Reads your code (never modifies without explicit action)
-- Stores data in isolated JSON files
+- Stores data in an isolated SQLite database (`devilmcp.db`)
 - Can be removed anytime with zero impact
 
 **Start using it today. Your future self will thank you.**

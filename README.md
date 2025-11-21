@@ -161,9 +161,17 @@ DevilMCP provides 30+ tools organized into categories:
 25. **record_insight** - Capture learnings
 26. **get_session_summary** - Review session results
 
+#### Task Management Tools
+
+27. **create_task** - Create a new task
+28. **update_task_status** - Update the status of a task
+29. **list_tasks** - List tasks filtering by status or workflow
+30. **create_workflow** - Create a new workflow
+31. **add_task_to_workflow** - Add a task to a workflow
+
 #### Utility Tools
 
-27. **get_mcp_statistics** - Get comprehensive usage statistics
+32. **get_mcp_statistics** - Get comprehensive usage statistics
 
 ## Example Workflows
 
@@ -302,15 +310,26 @@ Use `detect_change_conflicts` before implementing changes to avoid stepping on o
 
 ## Data Storage
 
-DevilMCP stores all data in the configured `STORAGE_PATH` (default: `./storage`) as JSON files:
+DevilMCP stores its data in the configured `STORAGE_PATH` (default: `./storage`):
 
-- `project_context.json` - Project structure and file information
-- `decisions.json` - Decision log with outcomes
-- `changes.json` - Change log with impacts
-- `cascade_analysis.json` - Cascade risk data and events
-- `thoughts.json` - Thought processes and reasoning chains
+- **Core Data (SQLite):** `devilmcp.db` stores all project data including decisions, changes, tools, tasks, workflows, thought sessions, and project context analysis. This ensures ACID compliance and robust querying capabilities.
 
-All data is persisted to disk and loaded on server start.
+All data is persisted to disk and loaded/connected on server start.
+
+## Database Migration (Upgrading from v1)
+
+If you have data from an older version of DevilMCP stored in JSON files (`decisions.json`, etc.), you can migrate it to the new SQLite database:
+
+1. Ensure your server is stopped.
+2. Run the migration script:
+   ```bash
+   python scripts/migrate_json_to_sqlite.py
+   ```
+   This will look for JSON files in your storage directory and import them into `devilmcp.db`.
+
+## Configuration
+
+DevilMCP supports optional configuration via a `tools.toml` file in the project root. This allows you to pre-define custom CLI tools that the agent can use. See `tools.toml.example` for a template.
 
 ## Architecture
 

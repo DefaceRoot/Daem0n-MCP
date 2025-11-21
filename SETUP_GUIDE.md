@@ -65,12 +65,12 @@
        "devilmcp": {
          "command": "python",
          "args": [
-           "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\server.py"
+           "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP\\server.py"
          ],
          "env": {
            "PORT": "8080",
            "LOG_LEVEL": "INFO",
-           "STORAGE_PATH": "./storage",
+           "STORAGE_PATH": "", 
            "MAX_CONTEXT_DEPTH": "10"
          }
        }
@@ -79,6 +79,7 @@
    ```
 
    **IMPORTANT:** Update the path in `args` to match your actual installation directory!
+   **NOTE:** `STORAGE_PATH` is typically left empty so DevilMCP creates a `.devilmcp` folder in whichever project you are currently working in.
 
 3. **Restart Claude Code** completely (quit and relaunch)
 
@@ -90,12 +91,12 @@ If Claude Code has trouble finding Python, use the venv's Python directly:
 {
   "mcpServers": {
     "devilmcp": {
-      "command": "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP\\venv\\Scripts\\python.exe",
       "args": [
-        "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\server.py"
+        "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP\\server.py"
       ],
       "env": {
-        "STORAGE_PATH": "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\storage"
+        "STORAGE_PATH": "" 
       }
     }
   }

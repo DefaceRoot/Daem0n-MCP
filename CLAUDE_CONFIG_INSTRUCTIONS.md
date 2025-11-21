@@ -26,9 +26,9 @@ Add this to your `claude_desktop_config.json`:
     "devilmcp": {
       "command": "python",
       "args": [
-        "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\server.py"
+        "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP\\server.py"
       ],
-      "cwd": "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP"
+      "cwd": "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP"
     }
   }
 }
@@ -44,11 +44,11 @@ If Claude Code has issues finding Python, use the venv's Python directly:
 {
   "mcpServers": {
     "devilmcp": {
-      "command": "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP\\venv\\Scripts\\python.exe",
+      "command": "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP\\venv\\Scripts\\python.exe",
       "args": [
         "server.py"
       ],
-      "cwd": "C:\\Users\\dasbl\\AndroidStudioProjects\\DevilMCP"
+      "cwd": "C:\\Users\\dasbl\\PycharmProjects\\DevilMCP"
     }
   }
 }
@@ -98,9 +98,9 @@ You should see 30+ tools available including:
 curl http://127.0.0.1:8000
 ```
 
-If nothing responds, restart the server:
+if nothing responds, restart the server:
 ```cmd
-cd C:\Users\dasbl\AndroidStudioProjects\DevilMCP
+cd C:\Users\dasbl\PycharmProjects\DevilMCP
 python server.py
 ```
 
@@ -134,7 +134,7 @@ PORT=8001
 
 **Reinstall dependencies:**
 ```cmd
-cd C:\Users\dasbl\AndroidStudioProjects\DevilMCP
+cd C:\Users\dasbl\PycharmProjects\DevilMCP
 python -m pip install -r requirements.txt --force-reinstall
 ```
 
@@ -144,7 +144,7 @@ python -m pip install -r requirements.txt --force-reinstall
 Create a shortcut to `setup_and_run.bat` in your Startup folder:
 1. Press `Win+R`, type `shell:startup`, press Enter
 2. Right-click → New → Shortcut
-3. Point to: `C:\Users\dasbl\AndroidStudioProjects\DevilMCP\setup_and_run.bat`
+3. Point to: `C:\Users\dasbl\PycharmProjects\DevilMCP\setup_and_run.bat`
 
 ### Option 2: Windows Service (Advanced)
 Use NSSM (Non-Sucking Service Manager) to run DevilMCP as a Windows service.
@@ -181,7 +181,7 @@ Once configured, Claude Code will have access to all DevilMCP capabilities:
 ## Need Help?
 
 - Server logs: Check terminal where `python server.py` is running
-- Storage path: `C:\Users\dasbl\AndroidStudioProjects\DevilMCP\storage`
+- Storage path: Check `.devilmcp/storage` in your current project directory
 - README: See main `README.md` for tool documentation
 - Issues: Review `SETUP_GUIDE.md` for detailed troubleshooting
 
