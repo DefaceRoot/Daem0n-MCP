@@ -8,6 +8,7 @@ DevilMCP is an advanced **Context Management System** for AI agents (like Claude
 *   **Safety:** Predicts "blast radius" of code changes before they happen.
 *   **Task Management:** Tracks what needs to be done directly within the chat.
 *   **Project Isolation:** Automatically maintains separate contexts for each project you work on.
+*   **Web Browser Automation:** Navigate, interact, and extract content (including accessibility trees) from websites using integrated Playwright tools.
 
 ---
 
@@ -30,6 +31,12 @@ DevilMCP is designed for **autonomous setup by your AI assistant**.
     ```
     Your AI will then autonomously install DevilMCP and configure its connection.
 
+3.  **Install Browser Dependencies:**
+    After the main installation, ensure the browser binaries are installed:
+    ```bash
+    playwright install
+    ```
+
 ---
 
 ## ⚙️ Configuration
@@ -51,6 +58,8 @@ When connected to Claude or an IDE, the agent will automatically use these tools
 *   **`log_decision`**: Records architectural choices.
 *   **`create_task`**: Manages your todo list.
 *   **`analyze_change_impact`**: Checks for breaking changes.
+*   **`browser_navigate` / `browser_click` / `browser_type`**: Automate web interactions.
+*   **`browser_get_content`**: Read web pages (supports accessibility tree format for LLMs).
 
 ---
 
@@ -62,6 +71,7 @@ To get the best results, provide the contents of `AI_INSTRUCTIONS.md` (found in 
 1.  **Always Check Context First:** Run `get_project_context()`.
 2.  **Log Every Decision:** Use `log_decision()` for architectural choices.
 3.  **Predict Before Changing:** Run `analyze_change_impact()` before writing code.
+4.  **Use Browser Tools:** Use `browser_*` tools to gather external information or test web UIs.
 
 ---
 
@@ -70,6 +80,7 @@ To get the best results, provide the contents of `AI_INSTRUCTIONS.md` (found in 
 DevilMCP uses a modular architecture backed by **SQLite** for robust data persistence.
 
 *   **Core Logic:** Located in `devilmcp/` package.
+*   **Browser Engine:** Integrated `Playwright` manager in `devilmcp/browser.py`.
 *   **Data Storage:** `.devilmcp/storage/devilmcp.db` (SQLite) inside your project root.
 *   **Entry Points:** `devilmcp` command (installed via pip) or `devilmcp/server.py`.
 
