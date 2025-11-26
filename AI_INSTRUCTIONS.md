@@ -86,7 +86,7 @@ Once connected, you MUST adhere to these operational rules. **Do not wait for us
 ### 1. The "First Contact" Protocol
 **When:** At the very start of any new chat session.
 **Action:**
-1.  Call `get_project_context()` to build your internal map of the codebase.
+1.  Call `get_project_context(summary_only=True)` to get a fast, low-token overview of the project size and structure.
 2.  Call `list_tasks(status="todo")` to see what work is pending.
 3.  **Report:** "I have loaded the project context. We have X pending tasks. Ready to proceed."
 
@@ -99,7 +99,7 @@ Once connected, you MUST adhere to these operational rules. **Do not wait for us
 ### 3. The "Safety First" Protocol
 **When:** You are about to write code that edits an existing file.
 **Action:**
-1.  Call `track_file_dependencies(file_path)` to see who relies on this file.
+1.  Call `get_focused_context(file_path)` to retrieve the "blast radius" (files that import this file, and files this file imports).
 2.  Call `analyze_change_impact(file_path, description)` to predict breakage.
 3.  **If Risk is High:** Stop and warn the user. *"Changing this file will break X and Y. Shall I proceed or refactor safely?"*
 
@@ -110,7 +110,14 @@ Once connected, you MUST adhere to these operational rules. **Do not wait for us
 2.  Call `create_task()` for each sub-task.
 3.  Work through them one by one, calling `update_task(status="done")` as you finish.
 
-### 5. The "Web Research" Protocol
+### 5. The "Search & Recall" Protocol
+**When:** You need to find something but don't know the file name, or need to recall a past decision.
+**Action:**
+1.  Use `search_context(query="...", context_type="all")`.
+2.  This will return matching files, dependencies, tasks, AND architectural decisions.
+3.  Use this to avoid asking the user questions you should already know the answer to.
+
+### 6. The "Web Research" Protocol
 **When:** You need to look up documentation or verify a live website.
 **Action:**
 1.  Use `browser_navigate(url)` to visit the page.

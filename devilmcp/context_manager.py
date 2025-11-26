@@ -14,7 +14,7 @@ from sqlalchemy import select, delete, text
 from sqlalchemy.exc import IntegrityError
 
 from .database import DatabaseManager
-from .models import ProjectFile, FileDependency, ExternalDependency
+from .models import ProjectFile, FileDependency, ExternalDependency, Task, Decision
 
 # Try importing gitpython
 try:
@@ -218,18 +218,58 @@ class ContextManager:
 
             # Add new dependencies
             for int_dep in deps["internal_deps"]:
-                # Try to find target file
-                # int_dep is usually a module path "utils.helper" or relative "./helper"
-                # This is hard to map exactly to file paths without full resolution logic
-                # For now, we store best effort string match or just skip linking if strict
-                # OR we just store the string. But our model requires ForeignKey.
-                # If we can't link, we can't store in FileDependency easily without looking up target.
-                # Let's try to find a matching file ending with that name
-                # This is fuzzy. For robustness, maybe we just log them for now or find exact match.
-                # Simpler: Just find ANY file that matches the import path logic.
-                # If not found, maybe it's not scanned yet.
-                # For this migration, we might just skip complex resolution and focus on External.
-                pass 
+                # Resolve internal dependency to a potential file path
+                # This is a heuristic: try to find a file that ends with the import path
+                # e.g., 'utils.helper' -> 'helper.py' or 'helper/__init__.py'
+                
+                # Normalize module path to file path components
+                # Python: . -> /
+                # JS: keep as is if relative
+                
+                possible_suffixes = []
+                if ext == '.py':
+                    base_mod = int_dep.replace('.', '/')
+                    possible_suffixes = [f"{base_mod}.py", f"{base_mod}/__init__.py"]
+                else:
+                    # JS/TS: remove ./ or ../
+                    clean_path = int_dep.lstrip('./')
+                    possible_suffixes = [
+                        f"{clean_path}.js", f"{clean_path}.ts", 
+                        f"{clean_path}.jsx", f"{clean_path}.tsx",
+                        f"{clean_path}/index.js", f"{clean_path}/index.ts"
+                    ]
+
+                # Try to find a matching file in the project
+                # We search for files ending with one of the suffixes
+                target_file = None
+                for suffix in possible_suffixes:
+                    # We use a LIKE query to find files ending with the suffix
+                    # This is not perfect (could match src/foo/bar.py for import bar) but better than nothing
+                    stmt = select(ProjectFile).where(ProjectFile.file_path.endswith(suffix))
+                    res = await session.execute(stmt)
+                    matches = res.scalars().all()
+                    
+                    # If multiple matches, we might pick the one closest in directory depth or just the first
+                    # For now, picking the first exact match or just the first one found
+                    if matches:
+                        target_file = matches[0]
+                        break
+                
+                if target_file and target_file.id != source_file.id:
+                    # Check if dependency already exists to avoid duplicates
+                    existing = await session.execute(
+                        select(FileDependency).where(
+                            (FileDependency.source_file_id == source_file.id) &
+                            (FileDependency.target_file_id == target_file.id)
+                        )
+                    )
+                    if not existing.scalar_one_or_none():
+                        fd = FileDependency(
+                            source_file_id=source_file.id, 
+                            target_file_id=target_file.id,
+                            dependency_type="import"
+                        )
+                        session.add(fd)
 
             for ext_dep in deps["external_deps"]:
                 ed = ExternalDependency(source_file_id=source_file.id, package_name=ext_dep)
@@ -238,6 +278,56 @@ class ContextManager:
             await session.commit()
         
         return deps
+
+    async def get_focused_context(self, file_path: str) -> Dict:
+        """
+        Retrieve focused context for a specific file:
+        - The file itself
+        - Files it imports (outgoing)
+        - Files that import it (incoming)
+        - External dependencies
+        """
+        async with self.db.get_session() as session:
+            # Find the file
+            stmt = select(ProjectFile).where(ProjectFile.file_path.endswith(file_path))
+            res = await session.execute(stmt)
+            target = res.scalars().first()
+            
+            if not target:
+                return {"error": f"File not found: {file_path}"}
+            
+            context = {
+                "file": {"path": target.file_path, "type": target.file_type, "size": target.size},
+                "imports": [],
+                "imported_by": [],
+                "dependencies": []
+            }
+            
+            # Get outgoing imports (files this file depends on)
+            stmt_out = select(ProjectFile).join(
+                FileDependency, FileDependency.target_file_id == ProjectFile.id
+            ).where(FileDependency.source_file_id == target.id)
+            
+            res_out = await session.execute(stmt_out)
+            for f in res_out.scalars().all():
+                context["imports"].append(f.file_path)
+                
+            # Get incoming imports (files that depend on this file)
+            stmt_in = select(ProjectFile).join(
+                FileDependency, FileDependency.source_file_id == ProjectFile.id
+            ).where(FileDependency.target_file_id == target.id)
+            
+            res_in = await session.execute(stmt_in)
+            for f in res_in.scalars().all():
+                context["imported_by"].append(f.file_path)
+                
+            # Get external dependencies
+            stmt_ext = select(ExternalDependency).where(ExternalDependency.source_file_id == target.id)
+            res_ext = await session.execute(stmt_ext)
+            for d in res_ext.scalars().all():
+                context["dependencies"].append(d.package_name)
+                
+            return context
 
     def _analyze_python_deps(self, content: str, deps: Dict) -> Dict:
         """Analyze Python imports using AST."""
@@ -282,7 +372,8 @@ class ContextManager:
     async def get_project_context(
         self, 
         project_path: Optional[str] = None,
-        include_dependencies: bool = True
+        include_dependencies: bool = True,
+        summary_only: bool = False
     ) -> Dict:
         """Retrieve comprehensive project context from DB."""
         if project_path:
@@ -292,49 +383,61 @@ class ContextManager:
             result = await session.execute(select(ProjectFile))
             files = result.scalars().all()
             
-            files_dict = {
-                f.file_path: {
-                    "path": f.file_path,
-                    "type": f.file_type,
-                    "size": f.size
-                } for f in files
-            }
+            files_dict = {}
+            if not summary_only:
+                files_dict = {
+                    f.file_path: {
+                        "path": f.file_path,
+                        "type": f.file_type,
+                        "size": f.size
+                    } for f in files
+                }
             
             # If dependencies needed, fetch them
             deps_dict = {}
-            if include_dependencies:
+            if include_dependencies and not summary_only:
                  # Fetch external deps
                  res_ext = await session.execute(select(ExternalDependency))
-                 for ed in res_ext.scalars().all():
-                     # We need to map back to file path. This is slow N+1 if not joined.
-                     # For prototype, acceptable.
-                     # Actually we have files_dict keyed by path.
-                     pass
+                 # Simplification for prototype: just list unique packages
+                 pkgs = set(d.package_name for d in res_ext.scalars().all())
+                 deps_dict["external_packages"] = list(pkgs)
 
             return {
                 "project": project_path or "unknown",
                 "total_files": len(files),
-                "files": files_dict,
-                "dependencies": deps_dict,
+                "files": files_dict if not summary_only else "omitted_summary_mode",
+                "dependencies": deps_dict if not summary_only else "omitted_summary_mode",
                 "last_updated": datetime.now(timezone.utc).isoformat()
             }
 
     async def search_context(self, query: str, context_type: str = "all") -> List[Dict]:
         """Search context for specific information."""
         results = []
-        query = query.lower()
+        query_pattern = f"%{query.lower()}%"
         
         async with self.db.get_session() as session:
             if context_type in ["all", "files"]:
-                stmt = select(ProjectFile).where(ProjectFile.file_path.contains(query))
+                stmt = select(ProjectFile).where(ProjectFile.file_path.ilike(query_pattern))
                 res = await session.execute(stmt)
                 for f in res.scalars().all():
                     results.append({"type": "file", "path": f.file_path, "info": {"size": f.size}})
                     
             if context_type in ["all", "dependencies"]:
-                stmt = select(ExternalDependency).where(ExternalDependency.package_name.contains(query))
+                stmt = select(ExternalDependency).where(ExternalDependency.package_name.ilike(query_pattern))
                 res = await session.execute(stmt)
                 for d in res.scalars().all():
                     results.append({"type": "dependency", "package": d.package_name})
+
+            if context_type in ["all", "tasks"]:
+                stmt = select(Task).where(Task.title.ilike(query_pattern) | Task.description.ilike(query_pattern))
+                res = await session.execute(stmt)
+                for t in res.scalars().all():
+                    results.append({"type": "task", "title": t.title, "status": t.status, "id": t.id})
+
+            if context_type in ["all", "decisions"]:
+                stmt = select(Decision).where(Decision.decision.ilike(query_pattern) | Decision.rationale.ilike(query_pattern))
+                res = await session.execute(stmt)
+                for d in res.scalars().all():
+                    results.append({"type": "decision", "decision": d.decision, "id": d.id})
                     
         return results

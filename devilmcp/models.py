@@ -149,8 +149,8 @@ class Task(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(String, default="todo") # todo, in_progress, done, blocked
-    priority = Column(String, default="medium")
+    status = Column(String, default="todo", index=True) # todo, in_progress, done, blocked
+    priority = Column(String, default="medium", index=True)
     assigned_to = Column(String, nullable=True) # specific tool or 'user'
     tags = Column(JSON, default=list)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -189,5 +189,5 @@ class ExternalDependency(Base):
     
     id = Column(Integer, primary_key=True)
     source_file_id = Column(Integer, ForeignKey("project_files.id"), nullable=False)
-    package_name = Column(String, nullable=False)
+    package_name = Column(String, nullable=False, index=True)
     version_constraint = Column(String, nullable=True)

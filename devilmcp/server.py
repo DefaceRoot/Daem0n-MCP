@@ -119,13 +119,23 @@ async def track_file_dependencies(
 @mcp.tool()
 async def get_project_context(
     project_path: Optional[str] = None,
-    include_dependencies: bool = True
+    include_dependencies: bool = True,
+    summary_only: bool = False
 ) -> Dict:
     """
     Retrieve comprehensive project context.
     """
     logger.info(f"Getting project context: {project_path or 'all'}")
-    return await context_mgr.get_project_context(project_path, include_dependencies)
+    return await context_mgr.get_project_context(project_path, include_dependencies, summary_only)
+
+@mcp.tool()
+async def get_focused_context(file_path: str) -> Dict:
+    """
+    Get context focused on a specific file (imports, imported_by, dependencies).
+    Efficient for understanding a single file's place in the architecture.
+    """
+    logger.info(f"Getting focused context for: {file_path}")
+    return await context_mgr.get_focused_context(file_path)
 
 @mcp.tool()
 async def search_context(query: str, context_type: str = "all") -> List[Dict]:
