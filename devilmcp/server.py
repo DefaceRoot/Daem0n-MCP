@@ -8,6 +8,7 @@ import os
 import sys
 import logging
 import asyncio
+import atexit
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
@@ -714,12 +715,43 @@ async def list_available_tools() -> List[Dict]:
         for tool in tools
     ]
 
+@mcp.tool()
+async def execute_tool(
+    tool_name: str,
+    command: str,
+    args: Optional[List[str]] = None
+) -> Dict:
+    """
+    Execute a command using the appropriate executor (native or subprocess).
+
+    For stateless tools (no prompt_patterns): runs command and returns when complete.
+    For stateful tools (has prompt_patterns): maintains session between calls.
+    """
+    result = await tool_registry.execute_tool(tool_name, command, args or [])
+    return {
+        "success": result.success,
+        "output": result.output,
+        "error": result.error,
+        "return_code": result.return_code,
+        "timed_out": result.timed_out,
+        "executor_type": result.executor_type
+    }
+
 # Main entry point
 
 async def init_tools():
     """Initialize tool registry."""
     await tool_registry.load_tools()
     logger.info("Tool registry initialized")
+
+async def cleanup():
+    """Cleanup resources on shutdown."""
+    logger.info("Cleaning up resources...")
+    try:
+        await tool_registry.cleanup_executors()
+        await browser_manager.close()
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}", exc_info=True)
 
 def main():
     """Main entry point for the DevilMCP server."""
@@ -735,6 +767,16 @@ def main():
         logger.error(f"Failed to initialize database or tools: {e}", exc_info=True)
         raise
 
+    # Register cleanup handler
+    def cleanup_sync():
+        """Synchronous cleanup wrapper for atexit."""
+        try:
+            asyncio.run(cleanup())
+        except Exception as e:
+            logger.error(f"Error in cleanup handler: {e}", exc_info=True)
+
+    atexit.register(cleanup_sync)
+
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:
@@ -742,6 +784,9 @@ def main():
     except Exception as e:
         logger.error(f"Server error: {e}", exc_info=True)
         raise
+    finally:
+        # Ensure cleanup runs even if atexit doesn't trigger
+        cleanup_sync()
 
 if __name__ == "__main__":
     main()
