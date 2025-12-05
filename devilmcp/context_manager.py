@@ -349,8 +349,8 @@ class ContextManager:
                         else:
                             deps["external_deps"].append(node.module.split('.')[0])
                             
-        except SyntaxError:
-            pass # Skip invalid syntax
+        except SyntaxError as e:
+            logger.debug(f"Skipping file with invalid Python syntax: {e}")
             
         return deps
 

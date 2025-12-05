@@ -23,7 +23,6 @@ from devilmcp.change_analyzer import ChangeAnalyzer
 from devilmcp.cascade_detector import CascadeDetector
 from devilmcp.thought_processor import ThoughtProcessor
 from devilmcp.database import DatabaseManager
-from devilmcp.process_manager import ProcessManager
 from devilmcp.tool_registry import ToolRegistry
 from devilmcp.task_manager import TaskManager
 
@@ -42,7 +41,6 @@ mcp = FastMCP("DevilMCP")
 
 # Initialize core modules
 db_manager = DatabaseManager(storage_path)
-process_manager = ProcessManager(db_manager)
 tool_registry = ToolRegistry(db_manager)
 task_manager = TaskManager(db_manager)
 context_mgr = ContextManager(db_manager)
@@ -498,44 +496,59 @@ async def start_tool_session(
 ) -> Dict:
     """
     Start a CLI tool session.
+
+    Note: Sessions are now managed automatically by execute_tool().
+    This tool verifies the tool exists and prepares the executor.
     """
     logger.info(f"Starting tool session: {tool_name}")
     tool_config = tool_registry.get_tool(tool_name)
     if not tool_config:
         return {"error": f"Tool not found: {tool_name}"}
 
-    proc_info = await process_manager.spawn_process(
-        tool_name=tool_name,
-        command=tool_config.command,
-        args=tool_config.args
-    )
-    return {
-        "tool_name": tool_name,
-        "pid": proc_info.pid,
-        "state": proc_info.state.value,
-        "started_at": proc_info.started_at.isoformat(),
-        "session_id": proc_info.session_id
-    }
+    # Get or create the executor (sessions start automatically on first command)
+    try:
+        executor = await tool_registry.get_executor(tool_name)
+        return {
+            "tool_name": tool_name,
+            "status": "ready",
+            "message": "Tool executor ready. Use execute_tool() to run commands.",
+            "is_stateful": bool(tool_config.prompt_patterns)
+        }
+    except Exception as e:
+        return {"error": f"Failed to initialize tool: {e}"}
 
 @mcp.tool()
-def get_tool_status(tool_name: str) -> Dict:
+async def get_tool_status(tool_name: str) -> Dict:
     """
-    Get status of a CLI tool process.
+    Get status of a CLI tool.
     """
-    status = process_manager.get_process_status(tool_name)
-    if status:
-        return status
-    else:
-        return {"error": f"Tool '{tool_name}' not running."}
+    tool_config = tool_registry.get_tool(tool_name)
+    if not tool_config:
+        return {"error": f"Tool '{tool_name}' not found."}
+
+    has_executor = tool_name in tool_registry._executors
+    return {
+        "tool_name": tool_name,
+        "enabled": tool_config.enabled,
+        "has_active_executor": has_executor,
+        "is_stateful": bool(tool_config.prompt_patterns),
+        "command": tool_config.command
+    }
 
 @mcp.tool()
 async def terminate_tool_session(tool_name: str) -> Dict:
     """
-    Terminate a CLI tool session.
+    Terminate a CLI tool session and clean up resources.
     """
     logger.info(f"Terminating tool session: {tool_name}")
-    await process_manager.terminate_process(tool_name)
-    return {"status": "terminated", "tool_name": tool_name}
+
+    if tool_name in tool_registry._executors:
+        executor = tool_registry._executors[tool_name]
+        await executor.cleanup()
+        del tool_registry._executors[tool_name]
+        return {"status": "terminated", "tool_name": tool_name}
+    else:
+        return {"status": "no_session", "tool_name": tool_name, "message": "No active session found"}
 
 @mcp.tool()
 async def register_custom_tool(

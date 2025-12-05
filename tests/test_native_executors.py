@@ -13,14 +13,16 @@ def git_repo(tmp_path):
     repo_path.mkdir()
 
     # Initialize git repo
-    subprocess.run(["git", "init"], cwd=repo_path, capture_output=True)
-    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo_path, capture_output=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_path, capture_output=True)
+    subprocess.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo_path, capture_output=True, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo_path, capture_output=True, check=True)
+    # Disable GPG signing for tests
+    subprocess.run(["git", "config", "commit.gpgsign", "false"], cwd=repo_path, capture_output=True, check=True)
 
     # Create a file and commit
     (repo_path / "test.txt").write_text("hello")
-    subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo_path, capture_output=True)
+    subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=repo_path, capture_output=True, check=True)
 
     return repo_path
 
