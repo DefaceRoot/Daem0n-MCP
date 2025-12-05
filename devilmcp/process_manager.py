@@ -1,19 +1,31 @@
 """
 Process Manager Module
 Handles spawning, monitoring, and managing CLI tool processes.
+
+DEPRECATED: This module is deprecated and will be removed in v2.0.
+Use ToolRegistry.execute_tool() instead.
 """
 
 import asyncio
 import logging
 import uuid
+import warnings
 from typing import Dict, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime, timezone
 
 from .database import DatabaseManager
-from .models import Tool, ToolSession 
+from .models import Tool, ToolSession
 from sqlalchemy import select
+
+# Module-level deprecation warning
+warnings.warn(
+    "ProcessManager is deprecated and will be removed in v2.0. "
+    "Use ToolRegistry.execute_tool() instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +54,13 @@ class ProcessInfo:
     process_obj: asyncio.subprocess.Process # Keep a reference to the process object
 
 class ProcessManager:
-    """Manages lifecycle of CLI tool processes"""
-    
+    """
+    DEPRECATED: Manages lifecycle of CLI tool processes.
+
+    This class is deprecated and will be removed in v2.0.
+    Use ToolRegistry.execute_tool() for new code.
+    """
+
     def __init__(self, db_manager: DatabaseManager): # Added db_manager
         self.db = db_manager
         self.processes: Dict[str, ProcessInfo] = {} # Keyed by tool_name
@@ -57,6 +74,11 @@ class ProcessManager:
         env: Optional[Dict[str, str]] = None,
     ) -> ProcessInfo:
         """Spawn a new CLI tool process"""
+        warnings.warn(
+            "spawn_process is deprecated. Use ToolRegistry.execute_tool() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         logger.info(f"Spawning process for {tool_name}")
         
         # Build command
@@ -136,6 +158,11 @@ class ProcessManager:
         prompt_patterns: Optional[List[str]] = None
     ) -> str:
         """Send command to a CLI tool and get response"""
+        warnings.warn(
+            "send_command is deprecated. Use ToolRegistry.execute_tool() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         proc_info = self.processes.get(tool_name)
         if not proc_info:
             raise ValueError(f"No process found for tool: {tool_name}")
@@ -217,6 +244,11 @@ class ProcessManager:
     
     async def terminate_process(self, tool_name: str):
         """Terminate a CLI tool process"""
+        warnings.warn(
+            "terminate_process is deprecated. Use ToolRegistry.execute_tool() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         proc_info = self.processes.get(tool_name)
         if not proc_info:
             return
@@ -265,6 +297,11 @@ class ProcessManager:
     
     def get_process_status(self, tool_name: str) -> Optional[Dict]:
         """Get status of a CLI tool process"""
+        warnings.warn(
+            "get_process_status is deprecated. Use ToolRegistry.execute_tool() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         proc_info = self.processes.get(tool_name)
         if not proc_info:
             return None
