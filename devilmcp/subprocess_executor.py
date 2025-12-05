@@ -44,6 +44,7 @@ class SubprocessExecutor(ToolExecutor):
     ) -> ExecutionResult:
         """Run once, capture output, exit. No prompt detection needed."""
         timeout_seconds = self.config.command_timeout / 1000
+        proc = None
 
         try:
             proc = await asyncio.create_subprocess_exec(

@@ -17,7 +17,7 @@ setup(
     description="Extremely powerful MCP server for AI agent context management",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/DevilMCP",
+    url="https://github.com/DasBluEyedDevil/DevilMCP",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
