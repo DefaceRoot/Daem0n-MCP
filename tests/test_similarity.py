@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from devilmcp.similarity import (
+from daem0nmcp.similarity import (
     tokenize,
     extract_code_symbols,
     TFIDFIndex,

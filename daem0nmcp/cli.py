@@ -1,13 +1,13 @@
 """
-DevilMCP CLI - Command-line interface for memory checks.
+Daem0nMCP CLI - Command-line interface for memory checks.
 
 Used by pre-commit hooks and direct invocation.
 
 Usage:
-    python -m devilmcp.cli check <filepath>
-    python -m devilmcp.cli briefing
-    python -m devilmcp.cli scan-todos [--auto-remember]
-    python -m devilmcp.cli migrate [--backfill-vectors]
+    python -m daem0nmcp.cli check <filepath>
+    python -m daem0nmcp.cli briefing
+    python -m daem0nmcp.cli scan-todos [--auto-remember]
+    python -m daem0nmcp.cli migrate [--backfill-vectors]
 """
 
 import sys
@@ -104,7 +104,7 @@ def format_check_result(result: dict) -> str:
 
 def main():
     """CLI entry point."""
-    parser = argparse.ArgumentParser(description="DevilMCP CLI")
+    parser = argparse.ArgumentParser(description="Daem0nMCP CLI")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     # check command
@@ -161,7 +161,7 @@ def main():
     elif args.command == "migrate":
         from .migrations import run_migrations, migrate_and_backfill_vectors
 
-        db_path = str(Path(storage_path) / "devilmcp.db")
+        db_path = str(Path(storage_path) / "daem0nmcp.db")
         print(f"Database: {db_path}")
 
         if args.backfill_vectors:
@@ -180,7 +180,7 @@ def main():
                 print(f"  - {m}")
             if count == 0:
                 print("Database is up to date.")
-            print("\nTo also backfill vectors, run: python -m devilmcp.cli migrate --backfill-vectors")
+            print("\nTo also backfill vectors, run: python -m daem0nmcp.cli migrate --backfill-vectors")
 
 
 if __name__ == "__main__":

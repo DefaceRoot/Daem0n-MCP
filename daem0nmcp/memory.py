@@ -1,5 +1,5 @@
 """
-Memory Manager - The core of DevilMCP's AI memory system.
+Memory Manager - The core of Daem0nMCP's AI memory system.
 
 This module handles:
 - Storing memories (decisions, patterns, warnings, learnings)

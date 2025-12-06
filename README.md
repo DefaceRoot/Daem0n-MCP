@@ -1,4 +1,4 @@
-# DevilMCP
+# Daem0nMCP
 
 **AI Memory & Decision System** - Give AI agents persistent memory and consistent decision-making with *actual* semantic understanding.
 
@@ -11,7 +11,7 @@
 - **Smart Briefing**: Pre-fetch context for focus areas
 - **Context Check**: Combined recall + rules check in one call
 
-## Why DevilMCP?
+## Why Daem0nMCP?
 
 AI agents start each session fresh. They don't remember:
 - What decisions were made and why
@@ -20,7 +20,7 @@ AI agents start each session fresh. They don't remember:
 
 **Markdown files don't solve this** - the AI has to know to read them and might ignore them.
 
-**DevilMCP provides ACTIVE memory** - it surfaces relevant context when the AI asks about a topic, enforces rules before actions, and learns from outcomes.
+**Daem0nMCP provides ACTIVE memory** - it surfaces relevant context when the AI asks about a topic, enforces rules before actions, and learns from outcomes.
 
 ### What Makes This Different
 
@@ -34,10 +34,10 @@ Unlike keyword-based systems:
 
 ```bash
 # Install
-pip install -e /path/to/DevilMCP
+pip install -e /path/to/Daem0n-MCP
 
 # Run the MCP server
-python -m devilmcp.server
+python -m daem0nmcp.server
 ```
 
 ## Core Tools
@@ -110,12 +110,12 @@ Add to your config file:
 ```json
 {
   "mcpServers": {
-    "devilmcp": {
+    "daem0nmcp": {
       "command": "python",
-      "args": ["-m", "devilmcp.server"],
+      "args": ["-m", "daem0nmcp.server"],
       "env": {
-        "PYTHONPATH": "/path/to/DevilMCP",
-        "DEVILMCP_PROJECT_ROOT": "/path/to/your/project"
+        "PYTHONPATH": "/path/to/Daem0n-MCP",
+        "DAEM0NMCP_PROJECT_ROOT": "/path/to/your/project"
       }
     }
   }
@@ -150,7 +150,7 @@ Call record_outcome(memory_id, outcome, worked)
 ## How It Works
 
 ### TF-IDF Similarity
-Instead of simple keyword matching, DevilMCP builds TF-IDF vectors for all stored memories and queries. This means:
+Instead of simple keyword matching, Daem0nMCP builds TF-IDF vectors for all stored memories and queries. This means:
 - "authentication" matches memories about "auth", "login", "OAuth"
 - Rare terms (like project-specific names) get higher weight
 - Common words are automatically de-emphasized
@@ -176,23 +176,23 @@ Warnings get a 1.2x boost. This ensures past mistakes surface prominently.
 
 Each project gets isolated storage at:
 ```
-<project_root>/.devilmcp/storage/devilmcp.db
+<project_root>/.daem0nmcp/storage/daem0nmcp.db
 ```
 
 ## Configuration
 
-Environment variables (prefix: `DEVILMCP_`):
+Environment variables (prefix: `DAEM0NMCP_`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DEVILMCP_PROJECT_ROOT` | `.` | Project root path |
-| `DEVILMCP_STORAGE_PATH` | auto | Override storage location |
-| `DEVILMCP_LOG_LEVEL` | `INFO` | Logging level |
+| `DAEM0NMCP_PROJECT_ROOT` | `.` | Project root path |
+| `DAEM0NMCP_STORAGE_PATH` | auto | Override storage location |
+| `DAEM0NMCP_LOG_LEVEL` | `INFO` | Logging level |
 
 ## Architecture
 
 ```
-devilmcp/
+daem0nmcp/
 ├── server.py      # MCP server with 11 tools
 ├── memory.py      # Memory storage & semantic retrieval
 ├── rules.py       # Rule engine with TF-IDF matching
@@ -212,9 +212,9 @@ pip install -e .
 pytest tests/ -v --asyncio-mode=auto
 
 # Run server directly
-python -m devilmcp.server
+python -m daem0nmcp.server
 ```
 
 ---
 
-*DevilMCP: Because AI agents should remember what they learned—and what went wrong.*
+*Daem0nMCP: Because AI agents should remember what they learned—and what went wrong.*

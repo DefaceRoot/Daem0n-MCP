@@ -1,5 +1,5 @@
 """
-DevilMCP Server - AI Memory System with Semantic Understanding
+Daem0nMCP Server - AI Memory System with Semantic Understanding
 
 A smarter MCP server that provides:
 1. Semantic memory storage and retrieval (TF-IDF + optional vectors)
@@ -62,7 +62,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
-mcp = FastMCP("DevilMCP")
+mcp = FastMCP("Daem0nMCP")
 
 # Initialize core modules
 storage_path = settings.get_storage_path()
@@ -70,7 +70,7 @@ db_manager = DatabaseManager(storage_path)
 memory_manager = MemoryManager(db_manager)
 rules_engine = RulesEngine(db_manager)
 
-logger.info(f"DevilMCP Server initialized (storage: {storage_path})")
+logger.info(f"Daem0nMCP Server initialized (storage: {storage_path})")
 
 
 # ============================================================================
@@ -506,7 +506,7 @@ async def get_briefing(
             }
 
     # Build actionable message
-    message_parts = [f"DevilMCP ready. {stats['total_memories']} memories stored."]
+    message_parts = [f"Daem0nMCP ready. {stats['total_memories']} memories stored."]
 
     if failed_approaches:
         message_parts.append(f"⚠️ {len(failed_approaches)} failed approaches to avoid!")
@@ -779,7 +779,7 @@ SCANNABLE_EXTENSIONS = {
 SKIP_DIRS = {
     '.git', '.svn', '.hg', 'node_modules', '__pycache__', '.pytest_cache',
     'venv', '.venv', 'env', '.env', 'dist', 'build', '.tox', '.eggs',
-    '*.egg-info', '.mypy_cache', '.coverage', 'htmlcov', '.devilmcp'
+    '*.egg-info', '.mypy_cache', '.coverage', 'htmlcov', '.daem0nmcp'
 }
 
 
@@ -1003,7 +1003,7 @@ async def ingest_doc(
 
     if content is None:
         return {
-            "error": "Failed to fetch URL. Make sure httpx and beautifulsoup4 are installed: pip install devilmcp[web]",
+            "error": "Failed to fetch URL. Make sure httpx and beautifulsoup4 are installed: pip install daem0nmcp[web]",
             "url": url
         }
 
@@ -1177,7 +1177,7 @@ def main():
     """Run the MCP server."""
     import asyncio
 
-    logger.info("Starting DevilMCP server...")
+    logger.info("Starting Daem0nMCP server...")
     logger.info(f"Storage: {storage_path}")
 
     # Initialize database

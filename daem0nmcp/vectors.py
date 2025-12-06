@@ -6,7 +6,7 @@ This module provides:
 - Hybrid search combining TF-IDF + vector similarity
 - Efficient storage of vectors in SQLite
 
-Install with: pip install devilmcp[vectors]
+Install with: pip install daem0nmcp[vectors]
 """
 
 import logging

@@ -1,6 +1,6 @@
 # tests/conftest.py
 """
-Pytest configuration for DevilMCP tests.
+Pytest configuration for Daem0nMCP tests.
 """
 
 import pytest

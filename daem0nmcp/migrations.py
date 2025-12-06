@@ -1,5 +1,5 @@
 """
-Database migrations for DevilMCP.
+Database migrations for Daem0nMCP.
 
 Handles schema updates for existing databases.
 """

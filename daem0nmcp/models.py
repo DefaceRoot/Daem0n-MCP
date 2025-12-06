@@ -1,5 +1,5 @@
 """
-DevilMCP Models - Simplified schema focused on AI memory and decision trees.
+Daem0nMCP Models - Simplified schema focused on AI memory and decision trees.
 
 Only 2 tables:
 - memories: Stores decisions, patterns, warnings, learnings

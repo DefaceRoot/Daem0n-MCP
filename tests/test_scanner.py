@@ -8,7 +8,7 @@ from pathlib import Path
 # Import the scanner function directly
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from devilmcp.server import _scan_for_todos, TODO_PATTERN
+from daem0nmcp.server import _scan_for_todos, TODO_PATTERN
 
 
 class TestTodoPattern:

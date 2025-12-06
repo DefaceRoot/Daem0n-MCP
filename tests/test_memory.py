@@ -5,8 +5,8 @@ from pathlib import Path
 import tempfile
 import shutil
 
-from devilmcp.database import DatabaseManager
-from devilmcp.memory import MemoryManager, extract_keywords
+from daem0nmcp.database import DatabaseManager
+from daem0nmcp.memory import MemoryManager, extract_keywords
 
 
 class TestExtractKeywords:

@@ -22,7 +22,7 @@ class DatabaseManager:
     Auto-migrates existing databases on startup.
     """
 
-    def __init__(self, storage_path: str = "./storage", db_name: str = "devilmcp.db"):
+    def __init__(self, storage_path: str = "./storage", db_name: str = "daem0nmcp.db"):
         self.storage_path = Path(storage_path)
         self.storage_path.mkdir(parents=True, exist_ok=True)
 

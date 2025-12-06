@@ -1,5 +1,5 @@
 """
-Similarity Engine - TF-IDF based semantic matching for DevilMCP.
+Similarity Engine - TF-IDF based semantic matching for Daem0nMCP.
 
 This replaces the naive keyword matching with actual text similarity:
 - TF-IDF vectorization for term importance

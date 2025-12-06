@@ -1,5 +1,5 @@
 """
-Setup script for DevilMCP
+Setup script for Daem0nMCP
 """
 
 from setuptools import setup, find_packages
@@ -11,13 +11,13 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
     requirements = [line.strip() for line in fh if line.strip() and not line.startswith("#")]
 
 setup(
-    name="devilmcp",
-    version="1.0.0",
-    author="DevilMCP",
+    name="daem0nmcp",
+    version="2.2.0",
+    author="Daem0nMCP",
     description="Extremely powerful MCP server for AI agent context management",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/DasBluEyedDevil/DevilMCP",
+    url="https://github.com/DasBluEyedDevil/Daem0n-MCP",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -34,7 +34,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "devilmcp=devilmcp.server:main",
+            "daem0nmcp=daem0nmcp.server:main",
         ],
     },
 )

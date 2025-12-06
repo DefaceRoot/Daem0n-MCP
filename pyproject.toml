@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "devilmcp"
+name = "daem0nmcp"
 version = "2.2.0"
 description = "AI Memory & Decision System - Give AI agents persistent memory and consistent decision-making"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.9"
 authors = [
-    {name = "DevilMCP"}
+    {name = "Daem0nMCP"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -51,15 +51,15 @@ all = [
 ]
 
 [project.scripts]
-devilmcp = "devilmcp.server:main"
+daem0nmcp = "daem0nmcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/DasBluEyedDevil/DevilMCP"
-Repository = "https://github.com/DasBluEyedDevil/DevilMCP"
+Homepage = "https://github.com/DasBluEyedDevil/Daem0n-MCP"
+Repository = "https://github.com/DasBluEyedDevil/Daem0n-MCP"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["devilmcp*"]
+include = ["daem0nmcp*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

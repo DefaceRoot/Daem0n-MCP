@@ -1,8 +1,8 @@
-# DevilMCP: AI Memory System - Complete Protocol & Reference
+# Daem0nMCP: AI Memory System - Complete Protocol & Reference
 
 **CRITICAL: Read and follow this protocol for every session.**
 
-DevilMCP gives you persistent memory across sessions. You can remember decisions, learn from failures, and follow established patterns - all stored in a local database that persists between conversations.
+Daem0nMCP gives you persistent memory across sessions. You can remember decisions, learn from failures, and follow established patterns - all stored in a local database that persists between conversations.
 
 ---
 
@@ -221,7 +221,7 @@ After ingesting, use `recall("stripe")` to retrieve the documentation.
 ```
 [Session starts]
 AI: get_briefing()
-→ "DevilMCP ready. 15 memories. ⚠️ 2 failed approaches to avoid!"
+→ "Daem0nMCP ready. 15 memories. ⚠️ 2 failed approaches to avoid!"
 → git_changes: {"uncommitted_changes": ["api/auth.py"]}
 
 User: "Fix the authentication bug in auth.py"
@@ -296,7 +296,7 @@ Use when working with external APIs or libraries to have their docs in memory.
 
 Per-project storage at:
 ```
-<project_root>/.devilmcp/storage/devilmcp.db
+<project_root>/.daem0nmcp/storage/daem0nmcp.db
 ```
 
 ---
@@ -332,4 +332,4 @@ Per-project storage at:
 
 ---
 
-*DevilMCP v2.2.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, and refactor proposals.*
+*Daem0nMCP v2.2.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, and refactor proposals.*

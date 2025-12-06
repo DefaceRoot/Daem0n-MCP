@@ -4,7 +4,7 @@ Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-DevilMCP is a focused MCP server providing **AI memory and decision trees** with **semantic understanding**. It gives AI agents:
+Daem0nMCP is a focused MCP server providing **AI memory and decision trees** with **semantic understanding**. It gives AI agents:
 - Persistent memory across sessions (decisions, patterns, warnings, learnings)
 - TF-IDF based semantic search (not just keywords)
 - Time-weighted recall (recent memories matter more)
@@ -22,7 +22,7 @@ DevilMCP is a focused MCP server providing **AI memory and decision trees** with
 pip install -e .
 
 # Run the MCP server
-python -m devilmcp.server
+python -m daem0nmcp.server
 
 # Run tests
 pytest tests/ -v --asyncio-mode=auto
@@ -31,7 +31,7 @@ pytest tests/ -v --asyncio-mode=auto
 ## Architecture
 
 ```
-devilmcp/
+daem0nmcp/
 ├── server.py      # MCP server, 15 tools (FastMCP)
 ├── memory.py      # MemoryManager - semantic store/recall with decay
 ├── rules.py       # RulesEngine - TF-IDF matched decision trees
@@ -46,7 +46,7 @@ scripts/
 └── pre-commit     # Git hook for memory-aware commits
 ```
 
-**Data Storage:** `<project_root>/.devilmcp/storage/devilmcp.db`
+**Data Storage:** `<project_root>/.daem0nmcp/storage/daem0nmcp.db`
 
 ## Database Schema (2 tables)
 
