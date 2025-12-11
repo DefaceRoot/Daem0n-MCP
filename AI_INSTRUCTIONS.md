@@ -23,18 +23,64 @@ Check your available tools list for `mcp__daem0nmcp__get_briefing`.
 
 ### STEP 2: INSTALL DAEM0NMCP (Execute If Tools Missing)
 
-You do not have Daem0nMCP connected. Execute these commands NOW:
+You do not have Daem0nMCP connected. Execute the following commands in order:
+
+#### 2A: Clone/Download the Repository
 
 ```bash
-# 1. Verify package is installed
-pip show daem0nmcp || pip install -e "C:\Users\dasbl\PycharmProjects\Daem0nMCP"
+# Clone to a persistent location (choose one):
 
-# 2. Add MCP server to current project
-claude mcp add daem0nmcp --scope project -e PYTHONPATH="C:\\Users\\dasbl\\PycharmProjects\\Daem0nMCP" -e DAEM0NMCP_PROJECT_ROOT="." -- python -m daem0nmcp.server
+# Option A: Clone to user's home directory (recommended)
+git clone https://github.com/DasBluEyedDevil/Daem0nMCP.git ~/Daem0nMCP
+
+# Option B: Clone to a custom location
+# git clone https://github.com/DasBluEyedDevil/Daem0nMCP.git /path/to/Daem0nMCP
 ```
 
-After running these commands, inform the user:
-> "Daem0nMCP has been configured. Please restart Claude Code for the memory system to activate. After restart, I will automatically load your project context."
+**Windows users:** Use `%USERPROFILE%\Daem0nMCP` or `C:\Users\<username>\Daem0nMCP`
+
+#### 2B: Install Python Dependencies
+
+```bash
+# Navigate to the cloned directory and install
+cd ~/Daem0nMCP
+pip install -e .
+```
+
+This installs Daem0nMCP in editable mode with all dependencies.
+
+#### 2C: Register the MCP Server with Claude Code
+
+```bash
+# Add the MCP server to your current project (project scope)
+claude mcp add daem0nmcp --scope project -- python -m daem0nmcp.server
+```
+
+**Alternative: User-wide installation (available in ALL projects):**
+
+```bash
+claude mcp add daem0nmcp --scope user -- python -m daem0nmcp.server
+```
+
+#### 2D: Verify Installation
+
+```bash
+# Test that the server can start
+python -m daem0nmcp.server --help
+```
+
+#### 2E: Restart Claude Code
+
+**CRITICAL:** The MCP server only loads on startup. You MUST restart Claude Code:
+
+1. Exit the current Claude Code session (type `/exit` or close terminal)
+2. Start a new Claude Code session in your project directory
+3. The tools `mcp__daem0nmcp__*` will now be available
+
+After restarting, inform the user:
+> "Daem0nMCP has been installed and configured. The memory system is now active. Loading project context..."
+
+Then immediately proceed to STEP 3.
 
 **STOP HERE** if you just installed. The user must restart for tools to become available.
 
@@ -456,4 +502,4 @@ Migration happens automatically on first startup. After migration completes, you
 
 ---
 
-*Daem0nMCP v2.2.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, and refactor proposals.*
+*Daem0nMCP v2.3.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, refactor proposals, and complete installation instructions with hooks.*
