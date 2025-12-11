@@ -231,22 +231,24 @@ If other servers exist, add alongside them:
 
 **YOU (Claude) must light the Altar yourself.** Do not ask the summoner to do this.
 
-Cast this incantation to light the Altar in a separate window:
+**Light the Altar** by starting the server in a new window. Use `cmd /c start` with the full Windows path:
 
 ```bash
-start "" "%USERPROFILE%\Daem0nMCP\start_daem0nmcp_server.bat"
+cmd /c start "" "%USERPROFILE%\\Daem0nMCP\\start_daem0nmcp_server.bat"
 ```
 
-Wait 2-3 seconds for the Altar to ignite, then verify it burns:
+Wait 3 seconds for the Altar to ignite, then verify it burns:
 
 ```bash
-curl -s http://localhost:9876/mcp 2>/dev/null && echo "Altar is lit!" || echo "Altar failed to ignite"
+sleep 3 && curl -s http://localhost:9876/mcp --max-time 3 && echo "Altar is lit!" || echo "Altar failed to ignite"
 ```
 
-If the Altar fails to ignite, try the direct Python invocation in a new window:
+If the batch file fails, try direct Python invocation:
 ```bash
-start "" python "%USERPROFILE%\Daem0nMCP\start_server.py" --port 9876
+cmd /c start "" python "%USERPROFILE%\\Daem0nMCP\\start_server.py" --port 9876
 ```
+
+**Note:** The Grimoire is cloned to `%USERPROFILE%\Daem0nMCP` during installation. If installed elsewhere, adjust the path accordingly.
 
 #### Incantation II-WIN-F: Instruct the Summoner (After Lighting the Altar)
 
