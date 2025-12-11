@@ -46,14 +46,22 @@ python3 --version 2>/dev/null || python --version 2>/dev/null || echo "Python no
 
 Save the detected values mentally - you'll need them for the next steps.
 
+**IMPORTANT PLATFORM NOTE:**
+- If OS shows `Linux` or `Darwin` (macOS): Follow sections 2B-2I (stdio transport)
+- If OS shows `Windows` or errors: **SKIP TO STEP 2-WIN** below (HTTP transport required)
+
+Windows has a known bug in the Python MCP SDK where stdio transport hangs indefinitely. HTTP transport is required.
+
+---
+
+### Linux/macOS Installation (stdio transport)
+
 #### 2B: Check if Daem0nMCP Repository Exists
 
 ```bash
 # Check if already cloned
 if [ -d "$HOME/Daem0nMCP" ]; then
   echo "FOUND: $HOME/Daem0nMCP"
-elif [ -d "$USERPROFILE/Daem0nMCP" ]; then
-  echo "FOUND: $USERPROFILE/Daem0nMCP"
 else
   echo "NOT FOUND - needs cloning"
 fi
@@ -65,15 +73,10 @@ fi
 git clone https://github.com/DasBluEyedDevil/Daem0n-MCP.git "$HOME/Daem0nMCP"
 ```
 
-If `$HOME` doesn't work (Windows edge case), use:
-```bash
-git clone https://github.com/DasBluEyedDevil/Daem0n-MCP.git ~/Daem0nMCP
-```
-
 #### 2D: Install Python Package
 
 ```bash
-pip install -e "$HOME/Daem0nMCP" || pip install -e ~/Daem0nMCP
+pip install -e "$HOME/Daem0nMCP"
 ```
 
 Verify installation succeeded:
@@ -87,11 +90,10 @@ You should see `Name: daem0nmcp` and a version number.
 
 **You MUST get the absolute path to Python.** Run this:
 ```bash
-# This finds the Python that has daem0nmcp installed
 python3 -c "import sys; print(sys.executable)" 2>/dev/null || python -c "import sys; print(sys.executable)"
 ```
 
-**SAVE THIS OUTPUT** - you need the exact path for the next step (e.g., `/usr/bin/python3` or `C:\Users\name\AppData\Local\Programs\Python\Python313\python.exe`)
+**SAVE THIS OUTPUT** - you need the exact path for the next step (e.g., `/usr/bin/python3`)
 
 #### 2F: Register MCP Server with Absolute Python Path
 
@@ -102,30 +104,17 @@ python3 -c "import sys; print(sys.executable)" 2>/dev/null || python -c "import 
 claude mcp add daem0nmcp --scope user -- <PYTHON_PATH> -m daem0nmcp.server
 ```
 
-**Alternative: Project-scope installation (only this project):**
-```bash
-claude mcp add daem0nmcp --scope project -- <PYTHON_PATH> -m daem0nmcp.server
-```
-
 **Examples with actual paths:**
 - Linux: `claude mcp add daem0nmcp --scope user -- /usr/bin/python3 -m daem0nmcp.server`
 - macOS: `claude mcp add daem0nmcp --scope user -- /opt/homebrew/bin/python3 -m daem0nmcp.server`
-- Windows: `claude mcp add daem0nmcp --scope user -- "C:\Users\name\AppData\Local\Programs\Python\Python313\python.exe" -m daem0nmcp.server`
-
-**Note:** User-scope is more reliable. Project-scope writes to `.mcp.json` which may have issues loading on some systems.
 
 #### 2G: Verify MCP Configuration
 
 ```bash
-cat .mcp.json
+claude mcp list
 ```
 
-**CRITICAL CHECK:** The `"command"` field MUST be an absolute path, NOT just `"python"`.
-
-✅ Correct: `"command": "/usr/bin/python3"` or `"command": "C:\\Users\\name\\...\\python.exe"`
-❌ Wrong: `"command": "python"`
-
-**If it shows just `"python"`, fix it manually using the Edit tool to replace with the absolute path from step 2E.**
+You should see `daem0nmcp` in the list.
 
 #### 2H: Test Server Starts
 
@@ -139,7 +128,7 @@ You should see log lines like `Daem0nMCP Server initialized`. If you see import 
 
 Tell the user exactly this:
 
-> **Daem0nMCP is now configured for this project.**
+> **Daem0nMCP is now configured.**
 >
 > **You must restart Claude Code for the memory system to activate:**
 > 1. Type `/exit` or close this terminal
@@ -152,27 +141,175 @@ Tell the user exactly this:
 
 ---
 
+### STEP 2-WIN: Windows Installation (HTTP transport REQUIRED)
+
+**⚠️ CRITICAL:** Windows has a known bug where Python MCP servers using stdio transport hang indefinitely. You MUST use HTTP transport instead.
+
+#### 2-WIN-A: Check if Daem0nMCP Repository Exists
+
+```powershell
+if (Test-Path "$env:USERPROFILE\Daem0nMCP") { Write-Host "FOUND: $env:USERPROFILE\Daem0nMCP" } else { Write-Host "NOT FOUND - needs cloning" }
+```
+
+Or in bash:
+```bash
+ls -d "$USERPROFILE/Daem0nMCP" 2>/dev/null && echo "FOUND" || echo "NOT FOUND - needs cloning"
+```
+
+#### 2-WIN-B: Clone Repository (Skip if Found Above)
+
+```bash
+git clone https://github.com/DasBluEyedDevil/Daem0n-MCP.git "$USERPROFILE/Daem0nMCP"
+```
+
+#### 2-WIN-C: Install Python Package
+
+```bash
+pip install -e "$USERPROFILE/Daem0nMCP"
+```
+
+Verify installation:
+```bash
+pip show daem0nmcp
+```
+
+#### 2-WIN-D: Configure HTTP Transport in Claude Config
+
+**Edit the user's Claude config file at `~/.claude.json` (or `%USERPROFILE%\.claude.json` on Windows).**
+
+Add daem0nmcp to the `mcpServers` section:
+
+```json
+{
+  "mcpServers": {
+    "daem0nmcp": {
+      "type": "http",
+      "url": "http://localhost:9876/mcp"
+    }
+  }
+}
+```
+
+If there are existing servers, add to them:
+```json
+{
+  "mcpServers": {
+    "existing-server": { ... },
+    "daem0nmcp": {
+      "type": "http",
+      "url": "http://localhost:9876/mcp"
+    }
+  }
+}
+```
+
+#### 2-WIN-E: Start the HTTP Server
+
+The server must be started BEFORE Claude Code can use it.
+
+**Option 1: Use the batch file (recommended for users)**
+
+```bash
+start "$USERPROFILE/Daem0nMCP/start_daem0nmcp_server.bat"
+```
+
+This opens a new terminal window that must stay open.
+
+**Option 2: Start directly with Python**
+
+```bash
+python "$USERPROFILE/Daem0nMCP/start_server.py" --port 9876
+```
+
+#### 2-WIN-F: Verify Server is Running
+
+The server window should show:
+```
+============================================================
+Daem0nMCP HTTP Server
+============================================================
+URL: http://127.0.0.1:9876/mcp
+Project: <project_path>
+============================================================
+Press Ctrl+C to stop
+```
+
+#### 2-WIN-G: Instruct User About Windows Workflow
+
+Tell the user exactly this:
+
+> **Daem0nMCP is configured for Windows with HTTP transport.**
+>
+> **IMPORTANT: On Windows, you must start the server before each Claude Code session:**
+>
+> 1. **Before starting Claude Code:** Run `start_daem0nmcp_server.bat` from the Daem0nMCP folder (or keep it running in a terminal)
+> 2. Leave that terminal window open while using Claude Code
+> 3. Start Claude Code in your project directory
+> 4. After restart, I will automatically load your project memory
+>
+> **Quick Start (run this before each session):**
+> ```
+> %USERPROFILE%\Daem0nMCP\start_daem0nmcp_server.bat
+> ```
+>
+> Or create a desktop shortcut to `start_daem0nmcp_server.bat` for convenience.
+
+**STOP HERE.** Do not proceed until:
+1. The HTTP server is running (terminal window showing "Daem0nMCP HTTP Server")
+2. The user restarts Claude Code
+3. You have `mcp__daem0nmcp__*` tools available
+
+---
+
 ### TROUBLESHOOTING (If Tools Still Missing After Restart)
+
+#### Linux/macOS Diagnostics
 
 Run these diagnostics:
 
 ```bash
 echo "=== Daem0nMCP Diagnostics ===" && \
-echo "1. MCP Config:" && cat .mcp.json 2>/dev/null || echo "   .mcp.json NOT FOUND" && \
+echo "1. MCP servers:" && claude mcp list && \
 echo "2. Package installed:" && pip show daem0nmcp | grep -E "^(Name|Version)" 2>/dev/null || echo "   NOT INSTALLED" && \
 echo "3. Python path:" && python3 -c "import sys; print(sys.executable)" 2>/dev/null || python -c "import sys; print(sys.executable)" && \
 echo "4. Server test:" && python -c "import daem0nmcp.server; print('   OK')" 2>&1
 ```
 
-**Common fixes:**
+**Common fixes (Linux/macOS):**
 
 | Problem | Solution |
 |---------|----------|
-| `.mcp.json` not found | Run step 2F again from the project directory |
-| `"command": "python"` in config | Edit `.mcp.json` to use absolute Python path |
+| MCP server not in list | Run step 2F again with `--scope user` |
+| `"command": "python"` in config | Edit config to use absolute Python path |
 | Package not installed | Run `pip install -e ~/Daem0nMCP` |
-| Import error | Check Python version (need 3.9+): `python --version` |
-| Wrong Python | The Python in `.mcp.json` must be the one with daem0nmcp installed |
+| Import error | Check Python version (need 3.10+): `python --version` |
+| Wrong Python | The Python in config must be the one with daem0nmcp installed |
+
+#### Windows Diagnostics
+
+```bash
+echo "=== Windows Daem0nMCP Diagnostics ===" && \
+echo "1. Check Claude config:" && cat ~/.claude.json 2>/dev/null | grep -A3 daem0nmcp && \
+echo "2. Package installed:" && pip show daem0nmcp && \
+echo "3. Server test:" && python -c "import daem0nmcp.server; print('OK')" 2>&1
+```
+
+**Common fixes (Windows):**
+
+| Problem | Solution |
+|---------|----------|
+| Tools hang indefinitely | You MUST use HTTP transport, not stdio. Follow STEP 2-WIN |
+| Server not connected | Start `start_daem0nmcp_server.bat` BEFORE opening Claude Code |
+| "Connection refused" | Server is not running. Start the batch file first |
+| Wrong URL in config | URL must be `http://localhost:9876/mcp` (include `/mcp`) |
+| Port 9876 in use | Change port in both `start_server.py` and `~/.claude.json` |
+| Package not installed | Run `pip install -e "$USERPROFILE/Daem0nMCP"` |
+
+**Windows Quick Fix Checklist:**
+1. ✅ Is `~/.claude.json` configured with HTTP transport?
+2. ✅ Is the server running? (Look for the terminal window)
+3. ✅ Did you restart Claude Code AFTER starting the server?
+4. ✅ Does `claude mcp list` show `daem0nmcp` as "Connected"?
 
 **STOP HERE** if you just installed. The user must restart for tools to become available.
 
@@ -594,4 +731,4 @@ Migration happens automatically on first startup. After migration completes, you
 
 ---
 
-*Daem0nMCP v2.3.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, refactor proposals, and complete installation instructions with hooks.*
+*Daem0nMCP v2.4.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, refactor proposals, complete installation instructions with hooks, and Windows HTTP transport support.*

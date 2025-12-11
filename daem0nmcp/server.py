@@ -49,11 +49,19 @@ except ImportError:
     print("ERROR: fastmcp not installed. Run: pip install fastmcp", file=sys.stderr)
     sys.exit(1)
 
-from .config import settings
-from .database import DatabaseManager
-from .memory import MemoryManager
-from .rules import RulesEngine
-from .models import Memory, Rule
+try:
+    from .config import settings
+    from .database import DatabaseManager
+    from .memory import MemoryManager
+    from .rules import RulesEngine
+    from .models import Memory, Rule
+except ImportError:
+    # For fastmcp run which executes server.py directly
+    from daem0nmcp.config import settings
+    from daem0nmcp.database import DatabaseManager
+    from daem0nmcp.memory import MemoryManager
+    from daem0nmcp.rules import RulesEngine
+    from daem0nmcp.models import Memory, Rule
 from sqlalchemy import select, desc
 
 # Configure logging

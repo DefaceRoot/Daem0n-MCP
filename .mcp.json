@@ -1,13 +1,3 @@
 {
-  "mcpServers": {
-    "daem0nmcp": {
-      "type": "stdio",
-      "command": "python",
-      "args": [
-        "-m",
-        "daem0nmcp.server"
-      ],
-      "env": {}
-    }
-  }
+  "mcpServers": {}
 }
