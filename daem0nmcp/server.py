@@ -63,6 +63,7 @@ except ImportError:
     from daem0nmcp.rules import RulesEngine
     from daem0nmcp.models import Memory, Rule
 from sqlalchemy import select, desc
+from dataclasses import dataclass
 
 # Configure logging
 logging.basicConfig(
@@ -74,13 +75,112 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("Daem0nMCP")
 
-# Initialize core modules
+
+# ============================================================================
+# PROJECT CONTEXT MANAGEMENT - Support multiple projects via HTTP transport
+# ============================================================================
+@dataclass
+class ProjectContext:
+    """Holds all managers for a specific project."""
+    project_path: str
+    storage_path: str
+    db_manager: DatabaseManager
+    memory_manager: MemoryManager
+    rules_engine: RulesEngine
+    initialized: bool = False
+
+
+# Cache of project contexts by normalized path
+_project_contexts: Dict[str, ProjectContext] = {}
+
+# Default project path (fallback for backward compatibility)
+_default_project_path: Optional[str] = os.environ.get('DAEM0NMCP_PROJECT_ROOT') or os.getcwd()
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize a path for consistent cache keys."""
+    return str(Path(path).resolve())
+
+
+def _get_storage_for_project(project_path: str) -> str:
+    """Get the storage path for a project."""
+    return str(Path(project_path) / ".daem0nmcp" / "storage")
+
+
+async def get_project_context(project_path: Optional[str] = None) -> ProjectContext:
+    """
+    Get or create a ProjectContext for the given project path.
+
+    This enables the HTTP server to handle multiple projects simultaneously,
+    each with its own isolated database.
+
+    Args:
+        project_path: Path to the project root. If None, uses default.
+
+    Returns:
+        ProjectContext with initialized managers for that project.
+    """
+    # Use default if not specified
+    if not project_path:
+        project_path = _default_project_path
+
+    # Normalize for consistent caching
+    normalized = _normalize_path(project_path)
+
+    # Return cached context if exists
+    if normalized in _project_contexts:
+        ctx = _project_contexts[normalized]
+        # Ensure it's initialized
+        if not ctx.initialized:
+            await ctx.db_manager.init_db()
+            ctx.initialized = True
+        return ctx
+
+    # Create new context for this project
+    storage_path = _get_storage_for_project(normalized)
+    db_mgr = DatabaseManager(storage_path)
+    mem_mgr = MemoryManager(db_mgr)
+    rules_eng = RulesEngine(db_mgr)
+
+    ctx = ProjectContext(
+        project_path=normalized,
+        storage_path=storage_path,
+        db_manager=db_mgr,
+        memory_manager=mem_mgr,
+        rules_engine=rules_eng,
+        initialized=False
+    )
+
+    # Initialize the database
+    await db_mgr.init_db()
+    ctx.initialized = True
+
+    # Cache it
+    _project_contexts[normalized] = ctx
+    logger.info(f"Created project context for: {normalized} (storage: {storage_path})")
+
+    return ctx
+
+
+async def cleanup_all_contexts():
+    """Clean up all project contexts on shutdown."""
+    for path, ctx in _project_contexts.items():
+        try:
+            await ctx.db_manager.close()
+            logger.info(f"Closed database for: {path}")
+        except Exception as e:
+            logger.warning(f"Error closing database for {path}: {e}")
+    _project_contexts.clear()
+
+
+# Legacy global references for backward compatibility
+# These point to the default project context
 storage_path = settings.get_storage_path()
 db_manager = DatabaseManager(storage_path)
 memory_manager = MemoryManager(db_manager)
 rules_engine = RulesEngine(db_manager)
 
-logger.info(f"Daem0nMCP Server initialized (storage: {storage_path})")
+logger.info(f"Daem0nMCP Server initialized (default storage: {storage_path})")
 
 
 # ============================================================================
@@ -93,7 +193,8 @@ async def remember(
     rationale: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None,
     tags: Optional[List[str]] = None,
-    file_path: Optional[str] = None
+    file_path: Optional[str] = None,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Store a decision, pattern, warning, or learning in long-term memory.
@@ -116,6 +217,7 @@ async def remember(
         context: Structured context (files involved, alternatives considered, etc.)
         tags: Tags for easier retrieval (e.g., ['auth', 'security', 'api'])
         file_path: Optional file path to associate this memory with
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         The created memory with its ID, plus any conflict warnings
@@ -132,8 +234,8 @@ async def remember(
         remember("pattern", "All API routes must have rate limiting",
                  file_path="api/routes.py")
     """
-    await db_manager.init_db()
-    return await memory_manager.remember(
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.remember(
         category=category,
         content=content,
         rationale=rationale,
@@ -150,7 +252,8 @@ async def remember(
 async def recall(
     topic: str,
     categories: Optional[List[str]] = None,
-    limit: int = 10
+    limit: int = 10,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Recall memories relevant to a topic using SEMANTIC SIMILARITY.
@@ -171,6 +274,7 @@ async def recall(
         topic: What you're looking for (e.g., "authentication", "database schema")
         categories: Limit to specific categories (default: all)
         limit: Max memories per category (default: 10)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Categorized memories with relevance scores and failure warnings
@@ -180,8 +284,8 @@ async def recall(
         recall("API endpoints", categories=["pattern", "warning"])
         recall("database")  # Before making DB changes
     """
-    await db_manager.init_db()
-    return await memory_manager.recall(
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.recall(
         topic=topic,
         categories=categories,
         limit=limit
@@ -198,7 +302,8 @@ async def add_rule(
     must_not: Optional[List[str]] = None,
     ask_first: Optional[List[str]] = None,
     warnings: Optional[List[str]] = None,
-    priority: int = 0
+    priority: int = 0,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Add a rule to the decision tree. Rules provide automatic guidance.
@@ -219,6 +324,7 @@ async def add_rule(
         ask_first: Questions to consider before proceeding
         warnings: Warnings from past experience
         priority: Higher priority rules are shown first (default: 0)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         The created rule
@@ -238,8 +344,8 @@ async def add_rule(
             priority=10  # High priority
         )
     """
-    await db_manager.init_db()
-    return await rules_engine.add_rule(
+    ctx = await get_project_context(project_path)
+    return await ctx.rules_engine.add_rule(
         trigger=trigger,
         must_do=must_do,
         must_not=must_not,
@@ -255,7 +361,8 @@ async def add_rule(
 @mcp.tool()
 async def check_rules(
     action: str,
-    context: Optional[Dict[str, Any]] = None
+    context: Optional[Dict[str, Any]] = None,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Check if an action triggers any rules and get guidance.
@@ -271,6 +378,7 @@ async def check_rules(
     Args:
         action: Description of what you're about to do
         context: Optional context (files involved, etc.)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Matching rules and combined guidance with severity indicator
@@ -280,8 +388,8 @@ async def check_rules(
         check_rules("modifying the authentication middleware")
         check_rules("updating the database schema to add a new column")
     """
-    await db_manager.init_db()
-    return await rules_engine.check_rules(action=action, context=context)
+    ctx = await get_project_context(project_path)
+    return await ctx.rules_engine.check_rules(action=action, context=context)
 
 
 # ============================================================================
@@ -291,7 +399,8 @@ async def check_rules(
 async def record_outcome(
     memory_id: int,
     outcome: str,
-    worked: bool
+    worked: bool,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Record the outcome of a decision to learn from it.
@@ -307,6 +416,7 @@ async def record_outcome(
         memory_id: The ID of the memory (returned from 'remember')
         outcome: Description of what happened
         worked: Did it work? True/False
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Updated memory, with suggestions if it failed
@@ -315,8 +425,8 @@ async def record_outcome(
         record_outcome(42, "JWT auth works well, no session issues", worked=True)
         record_outcome(43, "Caching caused stale data bugs", worked=False)
     """
-    await db_manager.init_db()
-    return await memory_manager.record_outcome(
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.record_outcome(
         memory_id=memory_id,
         outcome=outcome,
         worked=worked
@@ -404,7 +514,7 @@ async def get_briefing(
     If you provide focus_areas, you'll also get relevant memories for those topics.
 
     Args:
-        project_path: Optional project path (uses default if not specified)
+        project_path: Project root path (IMPORTANT for multi-project support - pass your current working directory)
         focus_areas: Optional list of topics to pre-fetch memories for
 
     Returns:
@@ -412,17 +522,18 @@ async def get_briefing(
 
     Example:
         get_briefing()  # Basic briefing
+        get_briefing(project_path="/path/to/project")  # Explicit project
         get_briefing(focus_areas=["authentication", "API"])  # With pre-loaded context
     """
-    await db_manager.init_db()
+    ctx = await get_project_context(project_path)
 
     # Get statistics with learning insights
-    stats = await memory_manager.get_statistics()
+    stats = await ctx.memory_manager.get_statistics()
 
     # Get most recent memory timestamp for git awareness
     last_memory_date = None
 
-    async with db_manager.get_session() as session:
+    async with ctx.db_manager.get_session() as session:
         # Get most recent memory
         result = await session.execute(
             select(Memory.created_at)
@@ -503,7 +614,7 @@ async def get_briefing(
     focus_memories = {}
     if focus_areas:
         for area in focus_areas[:3]:  # Limit to 3 areas
-            memories = await memory_manager.recall(area, limit=5)
+            memories = await ctx.memory_manager.recall(area, limit=5)
             focus_memories[area] = {
                 "found": memories.get("found", 0),
                 "summary": memories.get("summary"),
@@ -549,7 +660,8 @@ async def get_briefing(
 @mcp.tool()
 async def search_memories(
     query: str,
-    limit: int = 20
+    limit: int = 20,
+    project_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Search across all memories with semantic similarity.
@@ -560,12 +672,13 @@ async def search_memories(
     Args:
         query: Search text
         limit: Maximum results (default: 20)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Matching memories ranked by relevance
     """
-    await db_manager.init_db()
-    return await memory_manager.search(query=query, limit=limit)
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.search(query=query, limit=limit)
 
 
 # ============================================================================
@@ -574,7 +687,8 @@ async def search_memories(
 @mcp.tool()
 async def list_rules(
     enabled_only: bool = True,
-    limit: int = 50
+    limit: int = 50,
+    project_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     List all configured rules.
@@ -582,12 +696,13 @@ async def list_rules(
     Args:
         enabled_only: Only show enabled rules (default: True)
         limit: Maximum results (default: 50)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         List of rules with their guidance
     """
-    await db_manager.init_db()
-    return await rules_engine.list_rules(enabled_only=enabled_only, limit=limit)
+    ctx = await get_project_context(project_path)
+    return await ctx.rules_engine.list_rules(enabled_only=enabled_only, limit=limit)
 
 
 # ============================================================================
@@ -601,7 +716,8 @@ async def update_rule(
     ask_first: Optional[List[str]] = None,
     warnings: Optional[List[str]] = None,
     priority: Optional[int] = None,
-    enabled: Optional[bool] = None
+    enabled: Optional[bool] = None,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Update an existing rule.
@@ -614,12 +730,13 @@ async def update_rule(
         warnings: New warnings list (replaces existing)
         priority: New priority
         enabled: Enable/disable rule
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Updated rule or error
     """
-    await db_manager.init_db()
-    return await rules_engine.update_rule(
+    ctx = await get_project_context(project_path)
+    return await ctx.rules_engine.update_rule(
         rule_id=rule_id,
         must_do=must_do,
         must_not=must_not,
@@ -636,7 +753,8 @@ async def update_rule(
 @mcp.tool()
 async def find_related(
     memory_id: int,
-    limit: int = 5
+    limit: int = 5,
+    project_path: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Find memories related to a specific memory.
@@ -647,6 +765,7 @@ async def find_related(
     Args:
         memory_id: ID of the memory to find related content for
         limit: Maximum related memories to return (default: 5)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         List of related memories with similarity scores
@@ -655,8 +774,8 @@ async def find_related(
         # After seeing a decision about auth, find related patterns/warnings
         find_related(42)
     """
-    await db_manager.init_db()
-    return await memory_manager.find_related(memory_id=memory_id, limit=limit)
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.find_related(memory_id=memory_id, limit=limit)
 
 
 # ============================================================================
@@ -664,7 +783,8 @@ async def find_related(
 # ============================================================================
 @mcp.tool()
 async def context_check(
-    description: str
+    description: str,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Quick check for any relevant memories and rules for what you're about to do.
@@ -674,6 +794,7 @@ async def context_check(
 
     Args:
         description: Brief description of what you're working on
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Combined results: relevant memories, matching rules, and any warnings
@@ -681,13 +802,13 @@ async def context_check(
     Example:
         context_check("modifying the user authentication flow")
     """
-    await db_manager.init_db()
+    ctx = await get_project_context(project_path)
 
     # Get relevant memories
-    memories = await memory_manager.recall(description, limit=5)
+    memories = await ctx.memory_manager.recall(description, limit=5)
 
     # Check rules
-    rules = await rules_engine.check_rules(description)
+    rules = await ctx.rules_engine.check_rules(description)
 
     # Collect all warnings
     warnings = []
@@ -739,7 +860,8 @@ async def context_check(
 @mcp.tool()
 async def recall_for_file(
     file_path: str,
-    limit: int = 10
+    limit: int = 10,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Get all memories associated with a specific file.
@@ -753,6 +875,7 @@ async def recall_for_file(
     Args:
         file_path: The file path to look up
         limit: Max memories to return (default: 10)
+        project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
         Memories organized by category with warning indicators
@@ -761,8 +884,8 @@ async def recall_for_file(
         recall_for_file("api/handlers.py")
         recall_for_file("src/components/Auth.tsx")
     """
-    await db_manager.init_db()
-    return await memory_manager.recall_for_file(file_path=file_path, limit=limit)
+    ctx = await get_project_context(project_path)
+    return await ctx.memory_manager.recall_for_file(file_path=file_path, limit=limit)
 
 
 # ============================================================================
@@ -854,7 +977,8 @@ def _scan_for_todos(root_path: str, max_files: int = 500) -> List[Dict[str, Any]
 async def scan_todos(
     path: Optional[str] = None,
     auto_remember: bool = False,
-    types: Optional[List[str]] = None
+    types: Optional[List[str]] = None,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Scan the codebase for TODO, FIXME, HACK, XXX, and BUG comments.
@@ -863,9 +987,10 @@ async def scan_todos(
     indicate incomplete work, known issues, or workarounds.
 
     Args:
-        path: Directory to scan (defaults to current directory)
+        path: Directory to scan (defaults to project directory)
         auto_remember: If True, automatically create warning memories for each TODO
         types: Filter to specific types (e.g., ["FIXME", "HACK"]) - default: all
+        project_path: Path to the project root (for multi-project support)
 
     Returns:
         List of found items grouped by type, with file locations
@@ -875,9 +1000,10 @@ async def scan_todos(
         scan_todos(types=["FIXME", "HACK"])  # Only critical items
         scan_todos(auto_remember=True)  # Scan and save as warnings
     """
-    await db_manager.init_db()
+    ctx = await get_project_context(project_path)
 
-    scan_path = path or os.getcwd()
+    # Use provided path, or fall back to project path
+    scan_path = path or ctx.project_path
     found_todos = _scan_for_todos(scan_path)
 
     # Filter by types if specified
@@ -895,7 +1021,7 @@ async def scan_todos(
 
     # Get existing todo-related memories to avoid duplicates
     existing_todos = set()
-    async with db_manager.get_session() as session:
+    async with ctx.db_manager.get_session() as session:
         result = await session.execute(
             select(Memory)
             .where(Memory.tags.contains('"tech_debt"'))  # JSON contains check
@@ -911,7 +1037,7 @@ async def scan_todos(
         for todo in found_todos:
             sig = f"{todo['file']}:{todo['content'][:50]}"
             if sig not in existing_todos:
-                memory = await memory_manager.remember(
+                memory = await ctx.memory_manager.remember(
                     category='warning',
                     content=f"{todo['type']}: {todo['content']}",
                     rationale=f"Found in codebase at {todo['file']}:{todo['line']}",
@@ -981,7 +1107,8 @@ def _fetch_and_extract(url: str) -> Optional[str]:
 async def ingest_doc(
     url: str,
     topic: str,
-    chunk_size: int = 2000
+    chunk_size: int = 2000,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Fetch external documentation and store it as permanent learnings.
@@ -999,6 +1126,7 @@ async def ingest_doc(
         url: The URL to fetch documentation from
         topic: Topic tag for organizing the docs (e.g., "stripe", "react-hooks")
         chunk_size: Max characters per memory chunk (default: 2000)
+        project_path: Path to the project root (for multi-project support)
 
     Returns:
         Summary of ingested content
@@ -1007,7 +1135,7 @@ async def ingest_doc(
         ingest_doc("https://stripe.com/docs/api/charges", "stripe-charges")
         ingest_doc("https://react.dev/reference/react/hooks", "react-hooks")
     """
-    await db_manager.init_db()
+    ctx = await get_project_context(project_path)
 
     content = _fetch_and_extract(url)
 
@@ -1045,7 +1173,7 @@ async def ingest_doc(
     # Store each chunk as a learning
     memories_created = []
     for i, chunk in enumerate(chunks):
-        memory = await memory_manager.remember(
+        memory = await ctx.memory_manager.remember(
             category='learning',
             content=chunk[:500] + "..." if len(chunk) > 500 else chunk,
             rationale=f"Ingested from {url} (chunk {i+1}/{len(chunks)})",
@@ -1070,7 +1198,8 @@ async def ingest_doc(
 # ============================================================================
 @mcp.tool()
 async def propose_refactor(
-    file_path: str
+    file_path: str,
+    project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Generate refactor suggestions for a file based on memory context.
@@ -1085,6 +1214,7 @@ async def propose_refactor(
 
     Args:
         file_path: The file to analyze for refactoring
+        project_path: Path to the project root (for multi-project support)
 
     Returns:
         Combined context with memories, todos, and suggested actions
@@ -1092,7 +1222,7 @@ async def propose_refactor(
     Example:
         propose_refactor("src/auth/handlers.py")
     """
-    await db_manager.init_db()
+    ctx = await get_project_context(project_path)
 
     result = {
         "file_path": file_path,
@@ -1104,7 +1234,7 @@ async def propose_refactor(
     }
 
     # Get file-specific memories
-    file_memories = await memory_manager.recall_for_file(file_path)
+    file_memories = await ctx.memory_manager.recall_for_file(file_path)
     result["memories"] = file_memories
 
     # Scan for TODOs in this specific file
@@ -1114,7 +1244,7 @@ async def propose_refactor(
 
     # Check relevant rules
     filename = os.path.basename(file_path)
-    rules = await rules_engine.check_rules(f"refactoring {filename}")
+    rules = await ctx.rules_engine.check_rules(f"refactoring {filename}")
     result["rules"] = rules
 
     # Extract constraints from warnings and failed approaches
@@ -1164,6 +1294,15 @@ async def propose_refactor(
 # ============================================================================
 # Cleanup
 # ============================================================================
+async def _cleanup_all_contexts():
+    """Close all project contexts."""
+    for ctx in _project_contexts.values():
+        try:
+            await ctx.db_manager.close()
+        except Exception:
+            pass
+
+
 def cleanup():
     """Cleanup on exit."""
     import asyncio
@@ -1172,12 +1311,16 @@ def cleanup():
         try:
             loop = asyncio.get_running_loop()
             # If there's a running loop, schedule cleanup
-            loop.create_task(db_manager.close())
+            loop.create_task(_cleanup_all_contexts())
         except RuntimeError:
             # No running loop - try to create one for cleanup
-            # Only do this if the engine was actually created
-            if db_manager._engine is not None:
-                asyncio.run(db_manager.close())
+            # Only close contexts that were actually initialized
+            contexts_to_close = [
+                ctx for ctx in _project_contexts.values()
+                if ctx.db_manager._engine is not None
+            ]
+            if contexts_to_close:
+                asyncio.run(_cleanup_all_contexts())
     except Exception:
         # Cleanup is best-effort, don't crash on exit
         pass

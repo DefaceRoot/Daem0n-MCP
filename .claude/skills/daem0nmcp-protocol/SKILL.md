@@ -1,9 +1,9 @@
 ---
 name: daem0nmcp-protocol
-description: Use when Daem0nMCP tools are available - enforces memory protocol before coding (get_briefing on session start, context_check before changes, remember after decisions, record_outcome after implementation)
+description: Use when Daem0nMCP tools are available - enforces the sacred covenant (commune at session start, seek counsel before changes, inscribe decisions, seal outcomes)
 ---
 
-# Daem0nMCP Protocol
+# The Daem0n's Protocol
 
 ## Overview
 
