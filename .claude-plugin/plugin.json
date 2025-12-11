@@ -1,0 +1,12 @@
+{
+  "name": "daem0nmcp",
+  "description": "AI memory system with semantic understanding - provides persistent memory, decision trees, and outcome tracking",
+  "version": "2.4.0",
+  "author": {
+    "name": "DasBluEyedDevil"
+  },
+  "homepage": "https://github.com/DasBluEyedDevil/Daem0n-MCP",
+  "repository": "https://github.com/DasBluEyedDevil/Daem0n-MCP",
+  "license": "MIT",
+  "keywords": ["memory", "mcp", "ai-memory", "semantic-search", "decision-trees", "skills"]
+}

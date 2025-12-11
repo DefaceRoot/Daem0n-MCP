@@ -390,6 +390,26 @@ For hooks across ALL projects, add to `~/.claude/settings.json`:
 
 ---
 
+### STEP 2.6: INVOKE DAEM0NMCP-PROTOCOL SKILL (If Superpowers Available)
+
+If you have the Superpowers plugin installed, invoke the Daem0nMCP protocol skill:
+
+```
+Skill tool: daem0nmcp:daem0nmcp-protocol
+```
+
+This skill enforces the memory protocol discipline:
+- Session start → get_briefing()
+- Before changes → context_check() / recall_for_file()
+- After decisions → remember()
+- After implementation → record_outcome()
+
+The skill is located at `.claude/skills/daem0nmcp-protocol/SKILL.md` in the Daem0nMCP repository.
+
+**If Superpowers is not installed:** Skip this step and follow the ONGOING PROTOCOL section manually.
+
+---
+
 ### STEP 3: INITIALIZE MEMORY (Execute Immediately When Tools Available)
 
 **DO NOT WAIT. DO NOT ASK. CALL THIS NOW:**
@@ -404,6 +424,119 @@ After calling, briefly report to the user:
 > "Daem0nMCP ready. [X] memories loaded. [Y] warnings to review."
 
 If there are failed approaches or warnings, mention them proactively.
+
+---
+
+### STEP 4: UPDATE PROJECT CLAUDE.MD (First Session Only)
+
+**If this is the first time Daem0nMCP is active in this project**, update the project's `CLAUDE.md` file to include the Daem0nMCP protocol.
+
+Check if CLAUDE.md exists:
+```bash
+ls -la CLAUDE.md 2>/dev/null || echo "NOT FOUND"
+```
+
+**If CLAUDE.md exists:** Add this section to it (using the Edit tool):
+
+```markdown
+## Daem0nMCP Memory System
+
+This project uses Daem0nMCP for persistent AI memory. Follow this protocol:
+
+### Session Start
+- Call `get_briefing()` immediately when tools are available
+- Review any warnings or failed approaches before starting work
+
+### Before Code Changes
+- Call `context_check("what you're doing")` before modifications
+- Call `recall_for_file("path")` when touching specific files
+- Acknowledge any warnings about past failures
+
+### After Decisions
+- Call `remember(category, content, rationale, file_path)` to record decisions
+- Use categories: decision, pattern, warning, learning
+
+### After Implementation
+- Call `record_outcome(memory_id, outcome, worked)` to track results
+- ALWAYS record failures (worked=false) - they help avoid future mistakes
+
+See AI_INSTRUCTIONS.md for complete tool reference.
+```
+
+**If CLAUDE.md does NOT exist:** Create it with the above content plus a basic project description header.
+
+---
+
+### STEP 5: ANALYZE PROJECT AND PROPOSE RULES (First Session Only)
+
+**After briefing completes**, analyze the project to propose initial rules. This helps establish patterns specific to this codebase.
+
+#### 5A: Analyze Project Structure
+
+Examine the project to understand:
+- Programming language(s) and frameworks used
+- Project structure (src/, tests/, etc.)
+- Build system (gradle, npm, pip, cargo, etc.)
+- Any existing coding standards (.editorconfig, .eslintrc, etc.)
+
+```bash
+# Get project overview
+ls -la
+find . -maxdepth 2 -type f -name "*.md" -o -name "*.json" -o -name "*.toml" -o -name "*.yaml" 2>/dev/null | head -20
+```
+
+#### 5B: Propose Rules Based on Analysis
+
+Based on what you find, propose rules using this format:
+
+> **Proposed Rules for [Project Name]**
+>
+> Based on my analysis, I recommend these rules:
+>
+> 1. **[Trigger: e.g., "adding new API endpoint"]**
+>    - Must do: [actions]
+>    - Must not: [constraints]
+>    - Ask first: [questions]
+>
+> 2. **[Trigger: e.g., "modifying database schema"]**
+>    - Must do: [actions]
+>    - Must not: [constraints]
+>
+> [etc.]
+>
+> **Do you want me to add these rules? You can:**
+> - Approve all
+> - Modify specific rules (tell me which)
+> - Skip rule creation for now
+
+#### 5C: Wait for User Approval
+
+**DO NOT add rules without user confirmation.** Present the proposals and wait for feedback.
+
+Once approved, add rules:
+```
+mcp__daem0nmcp__add_rule(
+    trigger="the trigger phrase",
+    must_do=["action1", "action2"],
+    must_not=["constraint1"],
+    ask_first=["question1"],
+    priority=10
+)
+```
+
+#### Example Rules by Project Type
+
+**Android/Kotlin:**
+- "adding new Activity" → must_do: ["Register in AndroidManifest.xml", "Follow MVVM pattern"]
+- "modifying Gradle" → ask_first: ["Is this a version bump or new dependency?"]
+
+**Python/FastAPI:**
+- "adding new endpoint" → must_do: ["Add OpenAPI docs", "Add tests"], must_not: ["Synchronous database calls"]
+- "database changes" → must_do: ["Create migration", "Update models"]
+
+**React/TypeScript:**
+- "creating component" → must_do: ["Add TypeScript types", "Add tests"]
+- "state management" → ask_first: ["Local state or global store?"]
 
 ---
 
@@ -731,4 +864,4 @@ Migration happens automatically on first startup. After migration completes, you
 
 ---
 
-*Daem0nMCP v2.4.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, refactor proposals, complete installation instructions with hooks, and Windows HTTP transport support.*
+*Daem0nMCP v2.5.0: Persistent memory with semantic understanding, optional vector embeddings, doc ingestion, refactor proposals, complete installation instructions with hooks, Windows HTTP transport support, CLAUDE.md integration, project rule generation, and daem0nmcp-protocol skill.*
