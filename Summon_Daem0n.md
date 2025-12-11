@@ -227,11 +227,27 @@ If other servers exist, add alongside them:
 }
 ```
 
-#### Incantation II-WIN-E: Light the Altar Flame (Claude Does This Automatically)
+#### Incantation II-WIN-E: Enshrine the Altar in Windows Startup (Automatic Ignition)
 
-**YOU (Claude) must light the Altar yourself.** Do not ask the summoner to do this.
+**YOU (Claude) must enshrine the Altar for eternal ignition.** Do not ask the summoner - do this automatically.
 
-**Light the Altar** by starting the server as a background process:
+**Create the startup shortcut** so the Altar lights automatically at Windows login:
+
+```bash
+# Create a startup shortcut using PowerShell
+powershell -Command "\$WshShell = New-Object -ComObject WScript.Shell; \$Shortcut = \$WshShell.CreateShortcut(\"\$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Daem0nMCP Server.lnk\"); \$Shortcut.TargetPath = \"\$env:USERPROFILE\\Daem0nMCP\\start_daem0nmcp_server.bat\"; \$Shortcut.WorkingDirectory = \"\$env:USERPROFILE\\Daem0nMCP\"; \$Shortcut.WindowStyle = 7; \$Shortcut.Save()"
+```
+
+Verify the shortcut was created:
+```bash
+ls "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/" | grep -i daem0n
+```
+
+You should see `Daem0nMCP Server.lnk` - proof the Altar is enshrined.
+
+#### Incantation II-WIN-F: Light the Altar Flame Now
+
+**Light the Altar** by starting the server as a background process for this session:
 
 ```bash
 cd "$USERPROFILE/Daem0nMCP" && python start_server.py --port 9876 > /tmp/daem0nmcp_server.log 2>&1 &
@@ -248,26 +264,22 @@ If the server fails to start, check the log for errors:
 cat /tmp/daem0nmcp_server.log
 ```
 
-**Note:** The server runs in the background. It will stop when you close this Claude Code session. For future sessions, the summoner can either:
-- Start the server manually before Claude Code: `%USERPROFILE%\Daem0nMCP\start_daem0nmcp_server.bat`
-- Or add it to Windows Startup folder for automatic ignition
+**Note:** The Altar is now enshrined in Windows Startup. From now on, it will light automatically when Windows starts - no manual action required
 
-#### Incantation II-WIN-F: Instruct the Summoner (After Lighting the Altar)
+#### Incantation II-WIN-G: Instruct the Summoner (After Lighting the Altar)
 
 **Only after YOU have successfully lit the Altar**, speak these words:
 
 > **The Altar of HTTP is lit and burning. The binding runes are inscribed.**
+>
+> **I have enshrined the Altar in Windows Startup** - it will ignite automatically whenever Windows starts. No manual action required for future sessions.
 >
 > **You must close and reopen the portal for the Daem0n to fully manifest:**
 > 1. Speak `/exit` or close this terminal
 > 2. Invoke `claude` again in this project realm
 > 3. Upon return, I shall commune with the Daem0n and report its memories
 >
-> **Note:** A sacred window has opened running the Daem0n server. Keep it burning (leave that terminal open) while communing with Claude. If you close it, the Daem0n will slumber.
->
-> **For future sessions:** The Altar must be lit before opening Claude Code. You can:
-> - Run `%USERPROFILE%\Daem0nMCP\start_daem0nmcp_server.bat` before starting Claude
-> - Or add it to your Windows Startup folder for automatic ignition at login
+> The Daem0n awaits your return.
 
 **HALT THE RITUAL.** Do not proceed until the summoner reopens the portal and `mcp__daem0nmcp__*` powers manifest.
 
@@ -312,15 +324,16 @@ echo "3. Summoning test:" && python -c "import daem0nmcp.server; print('The Daem
 |---------|------|
 | Powers hang eternally | Ancient wards block Direct Channel. Use RITUAL II-WINDOWS |
 | Daem0n not connected | Light the Altar BEFORE opening the portal |
-| "Connection refused" | The Altar flame has gone out. Relight it |
+| "Connection refused" | The Altar flame has gone out. Restart Windows or run the startup shortcut |
 | Wrong URL in config | URL must be `http://localhost:9876/mcp` (include `/mcp`) |
 | Port 9876 occupied | Change port in both `start_server.py` and `~/.claude.json` |
 | Essence not bound | Cast `pip install -e "$USERPROFILE/Daem0nMCP"` |
+| Startup shortcut missing | Re-run Incantation II-WIN-E to recreate it |
 
 **Windows Quick Divination Checklist:**
 1. Is `~/.claude.json` inscribed with HTTP coordinates?
-2. Does the Altar flame burn? (Look for the terminal window)
-3. Did you reopen the portal AFTER lighting the Altar?
+2. Does the Altar flame burn? (Check for `Daem0nMCP Server` in taskbar or Task Manager)
+3. Is the startup shortcut present in `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`?
 4. Does `claude mcp list` show `daem0nmcp` as "Connected"?
 
 **HALT** if you just completed the summoning. The portal must be reopened.
@@ -968,4 +981,4 @@ Migration happens automatically at first awakening. After migration completes, y
 
 ---
 
-*Grimoire of Daem0n v2.5.0: Eternal memory with semantic understanding, optional vector embeddings, knowledge consumption, refactor guidance, complete summoning rituals with wards, Windows Altar of HTTP, covenant integration, law generation, and the daem0nmcp-protocol skill.*
+*Grimoire of Daem0n v2.6.0: Eternal memory with semantic understanding, optional vector embeddings, knowledge consumption, refactor guidance, complete summoning rituals with wards, Windows Altar of HTTP with automatic Startup enrollment, covenant integration, law generation, and the daem0nmcp-protocol skill.*
