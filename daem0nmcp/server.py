@@ -113,6 +113,8 @@ def _missing_project_path_error() -> Dict[str, Any]:
 
 def _normalize_path(path: str) -> str:
     """Normalize a path for consistent cache keys."""
+    if path is None:
+        raise ValueError("Cannot normalize None path")
     return str(Path(path).resolve())
 
 
@@ -138,7 +140,9 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
     if not project_path:
         project_path = _default_project_path
 
-    # Normalize for consistent caching
+    # Normalize for consistent caching - validate project_path is not None
+    if not project_path:
+        raise ValueError("project_path is required when DAEM0NMCP_PROJECT_ROOT is not set")
     normalized = _normalize_path(project_path)
 
     # Return cached context if exists
@@ -146,8 +150,11 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
         ctx = _project_contexts[normalized]
         # Ensure it's initialized
         if not ctx.initialized:
-            await ctx.db_manager.init_db()
-            ctx.initialized = True
+            try:
+                await ctx.db_manager.init_db()
+                ctx.initialized = True
+            except Exception:
+                raise
         return ctx
 
     # Create new context for this project
@@ -166,8 +173,11 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
     )
 
     # Initialize the database
-    await db_mgr.init_db()
-    ctx.initialized = True
+    try:
+        await db_mgr.init_db()
+        ctx.initialized = True
+    except Exception:
+        raise
 
     # Cache it
     _project_contexts[normalized] = ctx

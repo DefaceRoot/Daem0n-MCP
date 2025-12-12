@@ -10,6 +10,7 @@ This module handles:
 """
 
 import logging
+import os
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from sqlalchemy import select, or_, func, desc
@@ -571,7 +572,8 @@ class MemoryManager:
             direct_memories = result.scalars().all()
 
             # Also search for memories mentioning this file in content
-            filename = file_path.split('/')[-1] if '/' in file_path else file_path
+            # Use os.path for cross-platform compatibility
+            filename = os.path.basename(file_path) if file_path else file_path
             result = await session.execute(
                 select(Memory)
                 .where(
