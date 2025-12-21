@@ -331,3 +331,79 @@ class TestMemoryManager:
         failed_mems = [m for m in result.get("decisions", []) if m.get("worked") is False]
         if failed_mems:
             assert any("_warning" in m for m in failed_mems)
+
+    @pytest.mark.asyncio
+    async def test_recall_with_tag_filter(self, memory_manager):
+        """Test recall with tag filtering."""
+        await memory_manager.remember(
+            category="decision",
+            content="Use Redis for caching",
+            tags=["cache", "performance"]
+        )
+        await memory_manager.remember(
+            category="decision",
+            content="Use Redis for sessions",
+            tags=["auth"]
+        )
+
+        result = await memory_manager.recall("Redis", tags=["cache"])
+
+        # Should only find the caching decision
+        assert result["found"] == 1
+        all_tags = [tag for m in result.get("decisions", []) for tag in m.get("tags", [])]
+        assert "cache" in all_tags
+        # Ensure sessions tag (from other memory) is not included
+        assert "auth" not in all_tags
+
+    @pytest.mark.asyncio
+    async def test_recall_with_file_filter(self, memory_manager):
+        """Test recall with file path filtering."""
+        await memory_manager.remember(
+            category="warning",
+            content="Don't use sync calls here",
+            file_path="api/handlers.py"
+        )
+        await memory_manager.remember(
+            category="warning",
+            content="Watch for race conditions",
+            file_path="worker/tasks.py"
+        )
+
+        result = await memory_manager.recall("calls", file_path="api/handlers.py")
+
+        # Should only find the handlers warning
+        assert result["found"] == 1
+        all_content = [m.get("content") for cat in ["warnings", "decisions"] for m in result.get(cat, [])]
+        assert len(all_content) == 1
+        assert "sync calls" in all_content[0]
+        # Ensure tasks.py memory is not included
+        assert not any("race conditions" in c for c in all_content)
+
+    @pytest.mark.asyncio
+    async def test_recall_with_combined_filters(self, memory_manager):
+        """Test recall with both tag and file_path filtering."""
+        await memory_manager.remember(
+            category="decision",
+            content="Cache user sessions in Redis",
+            tags=["cache", "auth"],
+            file_path="api/handlers.py"
+        )
+        await memory_manager.remember(
+            category="decision",
+            content="Cache API responses",
+            tags=["cache"],
+            file_path="api/middleware.py"
+        )
+
+        result = await memory_manager.recall(
+            "cache",
+            tags=["auth"],
+            file_path="api/handlers.py"
+        )
+
+        # Should only find the first memory (both filters match)
+        assert result["found"] == 1
+        all_content = [m["content"] for cat in ["decisions", "warnings", "patterns", "learnings"] for m in result.get(cat, [])]
+        assert any("sessions" in c for c in all_content)
+        # Ensure the other memory is not included
+        assert not any("responses" in c for c in all_content)

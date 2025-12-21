@@ -232,6 +232,8 @@ class MemoryManager:
         self,
         topic: str,
         categories: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        file_path: Optional[str] = None,
         limit: int = 10,
         include_warnings: bool = True,
         decay_half_life_days: float = 30.0
@@ -248,6 +250,8 @@ class MemoryManager:
         Args:
             topic: What you're looking for
             categories: Limit to specific categories (default: all)
+            tags: Filter to memories with these tags
+            file_path: Filter to memories for this file
             limit: Max memories per category
             include_warnings: Always include warnings even if not in categories
             decay_half_life_days: How quickly old memories lose relevance
@@ -277,6 +281,26 @@ class MemoryManager:
                 select(Memory).where(Memory.id.in_(memory_ids))
             )
             memories = {m.id: m for m in result.scalars().all()}
+
+        # Filter by tags if specified
+        if tags:
+            memories = {
+                mid: mem for mid, mem in memories.items()
+                if mem.tags and any(t in mem.tags for t in tags)
+            }
+
+        # Filter by file_path if specified
+        if file_path:
+            # Normalize paths (Windows vs Unix)
+            normalized_filter = file_path.replace('\\', '/')
+            memories = {
+                mid: mem for mid, mem in memories.items()
+                if mem.file_path and (
+                    mem.file_path.replace('\\', '/') == normalized_filter or
+                    mem.file_path.replace('\\', '/').endswith(normalized_filter) or
+                    normalized_filter.endswith(mem.file_path.replace('\\', '/'))
+                )
+            }
 
         # Score with decay and organize
         scored_memories = []

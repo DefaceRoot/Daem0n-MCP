@@ -358,6 +358,8 @@ async def remember(
 async def recall(
     topic: str,
     categories: Optional[List[str]] = None,
+    tags: Optional[List[str]] = None,
+    file_path: Optional[str] = None,
     limit: int = 10,
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -379,6 +381,8 @@ async def recall(
     Args:
         topic: What you're looking for (e.g., "authentication", "database schema")
         categories: Limit to specific categories (default: all)
+        tags: Filter to memories with specific tags
+        file_path: Filter to memories for a specific file
         limit: Max memories per category (default: 10)
         project_path: Project root path (for multi-project HTTP server support)
 
@@ -389,6 +393,8 @@ async def recall(
         recall("authentication")  # Get all memories about auth
         recall("API endpoints", categories=["pattern", "warning"])
         recall("database")  # Before making DB changes
+        recall("Redis", tags=["cache"])  # Only memories tagged with cache
+        recall("sync calls", file_path="api/handlers.py")  # Only for specific file
     """
     # Require project_path for multi-project support
     if not project_path and not _default_project_path:
@@ -398,6 +404,8 @@ async def recall(
     return await ctx.memory_manager.recall(
         topic=topic,
         categories=categories,
+        tags=tags,
+        file_path=file_path,
         limit=limit
     )
 
