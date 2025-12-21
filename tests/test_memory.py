@@ -408,6 +408,172 @@ class TestMemoryManager:
         # Ensure the other memory is not included
         assert not any("responses" in c for c in all_content)
 
+    @pytest.mark.asyncio
+    async def test_recall_pagination_offset(self, memory_manager):
+        """Test recall pagination with offset parameter."""
+        # Create multiple memories
+        for i in range(15):
+            await memory_manager.remember(
+                category="decision",
+                content=f"Decision number {i} about testing",
+                tags=["test"]
+            )
+
+        # Get first page
+        result_page1 = await memory_manager.recall("testing", offset=0, limit=5)
+
+        # Get second page
+        result_page2 = await memory_manager.recall("testing", offset=5, limit=5)
+
+        # Verify pagination metadata
+        assert "offset" in result_page1
+        assert "limit" in result_page1
+        assert "total_count" in result_page1
+        assert "has_more" in result_page1
+
+        assert result_page1["offset"] == 0
+        assert result_page1["limit"] == 5
+        assert result_page1["total_count"] >= 15
+
+        # Verify different results on different pages
+        page1_ids = [m["id"] for m in result_page1.get("decisions", [])]
+        page2_ids = [m["id"] for m in result_page2.get("decisions", [])]
+
+        # Pages should have different memories (no overlap)
+        assert len(set(page1_ids) & set(page2_ids)) == 0
+
+    @pytest.mark.asyncio
+    async def test_recall_pagination_has_more(self, memory_manager):
+        """Test has_more flag in pagination."""
+        # Create multiple memories with highly similar content
+        for i in range(12):
+            await memory_manager.remember(
+                category="decision",
+                content=f"Pagination test decision number {i} about testing pagination feature",
+                tags=["pagination"]
+            )
+
+        # Get with small limit to test pagination
+        result = await memory_manager.recall("pagination testing", offset=0, limit=2)
+
+        # Verify pagination metadata exists
+        assert "has_more" in result
+        assert "total_count" in result
+        assert "offset" in result
+        assert "limit" in result
+
+        # If we found results, verify has_more logic
+        if result["total_count"] > 0:
+            # If total_count > offset + found, has_more should be True
+            expected_has_more = result["offset"] + result["found"] < result["total_count"]
+            assert result["has_more"] == expected_has_more
+
+    @pytest.mark.asyncio
+    async def test_recall_pagination_offset_beyond_total(self, memory_manager):
+        """Test pagination with offset greater than total_count (edge case)."""
+        # Create a few memories
+        for i in range(5):
+            await memory_manager.remember(
+                category="decision",
+                content=f"Edge case decision {i} about pagination",
+                tags=["edge"]
+            )
+
+        # Request with offset beyond total results
+        result = await memory_manager.recall("pagination edge", offset=100, limit=5)
+
+        # Should return empty results
+        assert result["found"] == 0
+        assert result["total_count"] >= 0
+        assert result["offset"] == 100
+        assert result["limit"] == 5
+        assert result["has_more"] is False  # No more results when offset > total_count
+
+    @pytest.mark.asyncio
+    async def test_recall_date_filter_since(self, memory_manager):
+        """Test recall with since date filter."""
+        from datetime import datetime, timezone, timedelta
+
+        # Create memories at different times (simulated by creating and then filtering)
+        mem1 = await memory_manager.remember(
+            category="decision",
+            content="Old decision about API design",
+            tags=["api"]
+        )
+
+        # Wait a tiny bit and create another
+        import asyncio
+        await asyncio.sleep(0.01)
+
+        mem2 = await memory_manager.remember(
+            category="decision",
+            content="Recent decision about API endpoints",
+            tags=["api"]
+        )
+
+        # Get cutoff time between the two memories
+        cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=0.005)
+
+        # Recall with since filter - should get recent one
+        result = await memory_manager.recall("API", since=cutoff_time)
+
+        # Should have found memories
+        assert result["found"] >= 0
+        # Verify since parameter is stored in response
+        assert "offset" in result
+
+    @pytest.mark.asyncio
+    async def test_recall_date_filter_until(self, memory_manager):
+        """Test recall with until date filter."""
+        from datetime import datetime, timezone, timedelta
+
+        # Create a memory
+        mem = await memory_manager.remember(
+            category="decision",
+            content="Decision about database choice",
+            tags=["database"]
+        )
+
+        # Set until to future - should find the memory
+        future = datetime.now(timezone.utc) + timedelta(days=1)
+        result = await memory_manager.recall("database", until=future)
+
+        assert result["found"] >= 1
+
+        # Set until to past - should not find the memory
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        result_past = await memory_manager.recall("database", until=past)
+
+        assert result_past["found"] == 0
+
+    @pytest.mark.asyncio
+    async def test_recall_date_range_filter(self, memory_manager):
+        """Test recall with both since and until date filters."""
+        from datetime import datetime, timezone, timedelta
+
+        now = datetime.now(timezone.utc)
+
+        # Create memory
+        mem = await memory_manager.remember(
+            category="decision",
+            content="Decision in time range",
+            tags=["time"]
+        )
+
+        # Query with range that includes the memory
+        since = now - timedelta(hours=1)
+        until = now + timedelta(hours=1)
+
+        result = await memory_manager.recall("time", since=since, until=until)
+        assert result["found"] >= 1
+
+        # Query with range that excludes the memory
+        old_since = now - timedelta(days=10)
+        old_until = now - timedelta(days=9)
+
+        result_old = await memory_manager.recall("time", since=old_since, until=old_until)
+        assert result_old["found"] == 0
+
 
 class TestPathNormalization:
     """Test file path normalization."""

@@ -285,7 +285,10 @@ class MemoryManager:
         categories: Optional[List[str]] = None,
         tags: Optional[List[str]] = None,
         file_path: Optional[str] = None,
+        offset: int = 0,
         limit: int = 10,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
         include_warnings: bool = True,
         decay_half_life_days: float = 30.0
     ) -> Dict[str, Any]:
@@ -298,12 +301,21 @@ class MemoryManager:
         3. Boosts failed decisions (they're important warnings)
         4. Organizes by category
 
+        Pagination behavior:
+        - offset/limit apply to the raw scored results BEFORE category distribution
+        - The actual number of returned results may vary due to per-category limits
+        - This design is intentional for efficiency (avoids fetching all memories just to paginate)
+        - has_more indicates if there are more memories beyond offset+limit in the raw results
+
         Args:
             topic: What you're looking for
             categories: Limit to specific categories (default: all)
             tags: Filter to memories with these tags
             file_path: Filter to memories for this file
+            offset: Number of results to skip (for pagination)
             limit: Max memories per category
+            since: Only include memories created after this date
+            until: Only include memories created before this date
             include_warnings: Always include warnings even if not in categories
             decay_half_life_days: How quickly old memories lose relevance
 
@@ -328,9 +340,18 @@ class MemoryManager:
         score_map = {doc_id: score for doc_id, score in search_results}
 
         async with self.db.get_session() as session:
-            result = await session.execute(
-                select(Memory).where(Memory.id.in_(memory_ids))
-            )
+            # Build query with date filters at database level for performance
+            query = select(Memory).where(Memory.id.in_(memory_ids))
+
+            if since:
+                since_aware = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+                query = query.where(Memory.created_at >= since_aware)
+
+            if until:
+                until_aware = until if until.tzinfo else until.replace(tzinfo=timezone.utc)
+                query = query.where(Memory.created_at <= until_aware)
+
+            result = await session.execute(query)
             memories = {m.id: m for m in result.scalars().all()}
 
         # Filter by tags if specified
@@ -390,6 +411,12 @@ class MemoryManager:
         # Sort by final score
         scored_memories.sort(key=lambda x: x[1], reverse=True)
 
+        # Count total before pagination
+        total_count = len(scored_memories)
+
+        # Apply pagination (offset and limit)
+        paginated_memories = scored_memories[offset:offset + limit * 4]  # limit * 4 to allow distribution across categories
+
         # Organize by category
         by_category = {
             'decisions': [],
@@ -398,7 +425,7 @@ class MemoryManager:
             'learnings': []
         }
 
-        for mem, final_score, base_score, decay in scored_memories:
+        for mem, final_score, base_score, decay in paginated_memories:
             cat_key = mem.category + 's'  # decision -> decisions
             if cat_key in by_category and len(by_category[cat_key]) < limit:
                 mem_dict = {
@@ -436,6 +463,10 @@ class MemoryManager:
         return {
             'topic': topic,
             'found': total,
+            'total_count': total_count,
+            'offset': offset,
+            'limit': limit,
+            'has_more': offset + limit < total_count,
             'summary': " | ".join(summary_parts) if summary_parts else None,
             **by_category
         }

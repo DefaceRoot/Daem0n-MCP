@@ -375,7 +375,10 @@ async def recall(
     categories: Optional[List[str]] = None,
     tags: Optional[List[str]] = None,
     file_path: Optional[str] = None,
+    offset: int = 0,
     limit: int = 10,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
@@ -398,11 +401,14 @@ async def recall(
         categories: Limit to specific categories (default: all)
         tags: Filter to memories with specific tags
         file_path: Filter to memories for a specific file
+        offset: Number of results to skip for pagination (default: 0)
         limit: Max memories per category (default: 10)
+        since: Only include memories created after this date (ISO format)
+        until: Only include memories created before this date (ISO format)
         project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
-        Categorized memories with relevance scores and failure warnings
+        Categorized memories with relevance scores, pagination metadata, and failure warnings
 
     Examples:
         recall("authentication")  # Get all memories about auth
@@ -410,10 +416,27 @@ async def recall(
         recall("database")  # Before making DB changes
         recall("Redis", tags=["cache"])  # Only memories tagged with cache
         recall("sync calls", file_path="api/handlers.py")  # Only for specific file
+        recall("API", offset=10, limit=10)  # Get second page
+        recall("auth", since="2025-01-01T00:00:00Z")  # Only recent memories
     """
     # Require project_path for multi-project support
     if not project_path and not _default_project_path:
         return _missing_project_path_error()
+
+    # Parse date strings if provided
+    since_dt = None
+    until_dt = None
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+        except ValueError:
+            return {"error": f"Invalid 'since' date format: {since}. Use ISO format (e.g., '2025-01-01T00:00:00Z')"}
+
+    if until:
+        try:
+            until_dt = datetime.fromisoformat(until.replace('Z', '+00:00'))
+        except ValueError:
+            return {"error": f"Invalid 'until' date format: {until}. Use ISO format (e.g., '2025-12-31T23:59:59Z')"}
 
     ctx = await get_project_context(project_path)
     return await ctx.memory_manager.recall(
@@ -421,7 +444,10 @@ async def recall(
         categories=categories,
         tags=tags,
         file_path=file_path,
-        limit=limit
+        offset=offset,
+        limit=limit,
+        since=since_dt,
+        until=until_dt
     )
 
 
