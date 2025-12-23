@@ -1991,18 +1991,22 @@ async def propose_refactor(
 
     Combines:
     - File-specific memories (past decisions, warnings)
+    - Causal history (what decisions LED TO the current state)
     - TODO/FIXME comments in the file
     - Relevant rules and patterns
 
     Returns structured context that helps the AI agent propose
-    informed refactoring decisions.
+    informed refactoring decisions, including WHY the code evolved
+    the way it did.
 
     Args:
         file_path: The file to analyze for refactoring
         project_path: Path to the project root (for multi-project support)
 
     Returns:
-        Combined context with memories, todos, and suggested actions
+        Combined context with memories, causal_history, todos, and suggested actions.
+        The causal_history field traces backward through linked memories to show
+        what decisions led to each memory associated with the file.
 
     Example:
         propose_refactor("src/auth/handlers.py")
@@ -2016,6 +2020,7 @@ async def propose_refactor(
     result = {
         "file_path": file_path,
         "memories": {},
+        "causal_history": [],
         "todos": [],
         "rules": {},
         "constraints": [],
@@ -2025,6 +2030,38 @@ async def propose_refactor(
     # Get file-specific memories
     file_memories = await ctx.memory_manager.recall_for_file(file_path, project_path=ctx.project_path)
     result["memories"] = file_memories
+
+    # Trace causal chains for each memory to understand WHY the code evolved this way
+    seen_chain_ids: set[int] = set()
+    for category in ['decisions', 'patterns', 'warnings', 'learnings']:
+        for mem in file_memories.get(category, []):
+            mem_id = mem.get('id')
+            if mem_id and mem_id not in seen_chain_ids:
+                # Trace backward to find what led to this decision
+                chain_result = await ctx.memory_manager.trace_chain(
+                    memory_id=mem_id,
+                    direction="backward",
+                    max_depth=3  # Keep chains concise
+                )
+                if chain_result.get('chain'):
+                    result["causal_history"].append({
+                        "memory_id": mem_id,
+                        "memory_content": mem.get('content', '')[:100],
+                        "ancestors": [
+                            {
+                                "id": c["id"],
+                                "category": c.get("category"),
+                                "content": c.get("content", "")[:100],
+                                "relationship": c.get("relationship"),
+                                "depth": c.get("depth")
+                            }
+                            for c in chain_result["chain"]
+                        ]
+                    })
+                    # Track IDs to avoid duplicate chain traces
+                    seen_chain_ids.add(mem_id)
+                    for c in chain_result["chain"]:
+                        seen_chain_ids.add(c["id"])
 
     # Resolve file path relative to project directory
     absolute_file_path, error = _resolve_within_project(ctx.project_path, file_path)
@@ -2075,6 +2112,7 @@ async def propose_refactor(
     num_constraints = len(result["constraints"])
     num_opportunities = len(result["opportunities"])
     num_memories = file_memories.get('found', 0)
+    num_causal_chains = len(result["causal_history"])
 
     result["message"] = (
         f"Analysis for {file_path}: "
@@ -2082,6 +2120,9 @@ async def propose_refactor(
         f"{num_constraints} constraints, "
         f"{num_opportunities} opportunities"
     )
+
+    if num_causal_chains > 0:
+        result["message"] += f" | {num_causal_chains} causal chains explain WHY code evolved this way"
 
     if num_constraints > 0:
         result["message"] += " | Review constraints before refactoring!"

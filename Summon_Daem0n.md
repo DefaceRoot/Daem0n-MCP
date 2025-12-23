@@ -879,11 +879,13 @@ scan_todos(project_path="/path/to/project", auto_remember=true)  # Auto-create w
 *"Daem0n, reveal the hidden debts..."*
 
 #### `propose_refactor(file_path, project_path)`
-**When**: Before refactoring - gets combined context
-**Returns**: File memories + TODOs + laws + constraints + opportunities
+**When**: Before refactoring - gets combined context with causal history
+**Returns**: File memories + causal chains (WHY code evolved) + TODOs + laws + constraints + opportunities
 ```
 propose_refactor("src/auth/handlers.py", project_path="/path/to/project")
 ```
+The `causal_history` field traces backward through linked memories to show what decisions led to the current code state - invaluable context before making changes.
+
 *"Daem0n, advise me on refactoring this scroll..."*
 
 #### `ingest_doc(url, topic, project_path, chunk_size?)`
