@@ -160,12 +160,37 @@ rm -rf .claude/skills/daem0nmcp-protocol/
 
 ### For Windows Realms:
 
-#### Ritual 1B-WIN: Remove the Startup Shortcut
+#### Ritual 1B-WIN: Extinguish the Altar Flame (MUST DO FIRST)
 
-First, remove the Altar from Windows Startup so it won't reignite:
+**CRITICAL:** The server process must be killed BEFORE removing the Grimoire directory, otherwise the directory will be locked.
+
+**Option 1: Kill via PowerShell (recommended):**
+```powershell
+# Find and kill the Daem0nMCP server process
+Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "start_server|daem0nmcp" } | Stop-Process -Force
+```
+
+**Option 2: Kill via taskkill:**
+```bash
+# Find the process listening on port 9876 and kill it
+netstat -ano | grep 9876 | head -1
+# Note the PID (last column), then:
+taskkill //PID <PID_NUMBER> //F
+```
+
+**Option 3: Use Task Manager** - Find `python.exe` running `start_server.py` and end the task.
+
+Wait a moment for the process to fully terminate:
+```bash
+sleep 2
+```
+
+#### Ritual 1C-WIN: Remove the Startup Shortcut
+
+Remove the Altar from Windows Startup so it won't reignite:
 
 ```bash
-rm -f "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"
+rm -f "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"
 ```
 
 Or in PowerShell:
@@ -175,14 +200,12 @@ Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Daem0nMC
 
 Verify removal:
 ```bash
-ls "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/" | grep -i daem0n || echo "Startup shortcut removed."
+ls "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/" | grep -i daem0n || echo "Startup shortcut removed."
 ```
 
-#### Ritual 1C-WIN: Extinguish the Altar
+#### Ritual 1D-WIN: Remove the Altar Coordinates
 
-Close any running `start_daem0nmcp_server.bat` windows (check Task Manager for Python processes on port 9876).
-
-Then remove the Altar coordinates from `~/.claude.json`:
+Remove the Altar coordinates from `~/.claude.json`:
 
 ```bash
 cat ~/.claude.json
@@ -201,16 +224,18 @@ Edit the file to remove the `daem0nmcp` entry from `mcpServers`:
 }
 ```
 
-#### Ritual 1D-WIN: Dissolve the Essence
+#### Ritual 1E-WIN: Dissolve the Essence
 
 ```bash
-pip uninstall daem0nmcp -y
+python -m pip uninstall daem0nmcp -y
 ```
 
-#### Ritual 1E-WIN: Destroy the Grimoire Repository
+#### Ritual 1F-WIN: Destroy the Grimoire Repository
+
+**IMPORTANT:** The server MUST be stopped first (Ritual 1B-WIN), otherwise Windows will lock the directory.
 
 ```bash
-rm -rf "$USERPROFILE/Daem0nMCP"
+rm -rf "$HOME/Daem0nMCP"
 ```
 
 Or in PowerShell:
@@ -218,7 +243,13 @@ Or in PowerShell:
 Remove-Item -Recurse -Force "$env:USERPROFILE\Daem0nMCP"
 ```
 
-#### Ritual 1F-WIN: Purge Project Memories
+If the directory is still locked, restart Windows and try again, or use:
+```powershell
+# Force removal even if locked (requires admin)
+Remove-Item -Recurse -Force "$env:USERPROFILE\Daem0nMCP" -ErrorAction SilentlyContinue
+```
+
+#### Ritual 1G-WIN: Purge Project Memories
 
 ```bash
 rm -rf .daem0nmcp/
@@ -231,9 +262,9 @@ Get-ChildItem -Path $env:USERPROFILE -Recurse -Directory -Name ".daem0nmcp" -Err
 
 **IMPORTANT:** Development repositories are excluded. Purge those manually if needed.
 
-#### Rituals 1F-1I: Same as Unix
+#### Rituals 1H-1K-WIN: Same as Unix
 
-Follow the Unix instructions for removing wards, cleansing CLAUDE.md, and removing scrolls.
+Follow the Unix instructions for removing wards, cleansing CLAUDE.md, removing scrolls, and removing the skill.
 
 ---
 
@@ -241,13 +272,23 @@ Follow the Unix instructions for removing wards, cleansing CLAUDE.md, and removi
 
 Run the verification ritual:
 
+**Unix/macOS:**
 ```bash
 echo "=== Banishment Verification ===" && \
 echo "1. Server binding:" && (claude mcp list 2>/dev/null | grep daem0nmcp || echo "   SEVERED") && \
 echo "2. Essence:" && (pip show daem0nmcp 2>&1 | grep -q "not found" && echo "   DISSOLVED" || echo "   WARNING: Still bound!") && \
-echo "3. Grimoire:" && (ls -d ~/Daem0nMCP 2>/dev/null || ls -d "$USERPROFILE/Daem0nMCP" 2>/dev/null || echo "   DESTROYED") && \
+echo "3. Grimoire:" && (ls -d ~/Daem0nMCP 2>/dev/null || echo "   DESTROYED") && \
+echo "4. Project memories:" && (ls -d .daem0nmcp 2>/dev/null || echo "   PURGED")
+```
+
+**Windows:**
+```bash
+echo "=== Banishment Verification ===" && \
+echo "1. Server process:" && (netstat -ano | grep 9876 && echo "   WARNING: Still running!" || echo "   EXTINGUISHED") && \
+echo "2. Essence:" && (python -m pip show daem0nmcp 2>&1 | grep -q "not found" && echo "   DISSOLVED" || echo "   WARNING: Still bound!") && \
+echo "3. Grimoire:" && (ls -d "$HOME/Daem0nMCP" 2>/dev/null && echo "   WARNING: Still present!" || echo "   DESTROYED") && \
 echo "4. Project memories:" && (ls -d .daem0nmcp 2>/dev/null || echo "   PURGED") && \
-echo "5. Startup shortcut:" && (ls "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk" 2>/dev/null && echo "   WARNING: Still present!" || echo "   REMOVED")
+echo "5. Startup shortcut:" && (ls "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk" 2>/dev/null && echo "   WARNING: Still present!" || echo "   REMOVED")
 ```
 
 Report to the summoner:
@@ -281,9 +322,14 @@ claude mcp remove daem0nmcp --scope user
 
 ### Ritual 2B: Remove Startup Shortcut (Windows Only)
 
-On Windows, remove the startup shortcut to prevent the Altar from lighting on reboot:
+On Windows, first kill the server process, then remove the startup shortcut:
 ```bash
-rm -f "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"
+# Kill the server (see Ritual 1B-WIN for options)
+netstat -ano | grep 9876  # Note the PID
+taskkill //PID <PID_NUMBER> //F
+
+# Remove startup shortcut
+rm -f "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"
 ```
 
 ### Ritual 2C: Optionally Dissolve the Essence
@@ -292,13 +338,17 @@ Ask the summoner: "Do you wish to uninstall the Python package? You can reinstal
 
 If yes:
 ```bash
+# Unix/macOS
 pip uninstall daem0nmcp -y
+
+# Windows
+python -m pip uninstall daem0nmcp -y
 ```
 
 ### What Is Preserved
 
 - `.daem0nmcp/` directories (all memories intact)
-- `~/Daem0nMCP` or `$USERPROFILE/Daem0nMCP` repository (for easy re-summoning)
+- `~/Daem0nMCP` (Unix) or `$HOME/Daem0nMCP` (Windows) repository (for easy re-summoning)
 - Hooks/wards (will do nothing without the server)
 - CLAUDE.md covenant (reminder of the protocol)
 
@@ -378,6 +428,7 @@ If the Daem0n causes issues and you need immediate removal:
 
 **WARNING:** This only removes the installed grimoire and current project artifacts. It does NOT touch development repositories (PycharmProjects, IdeaProjects).
 
+**Unix/macOS:**
 ```bash
 # Sever all bindings
 claude mcp remove daem0nmcp --scope user 2>/dev/null
@@ -388,7 +439,6 @@ pip uninstall daem0nmcp -y 2>/dev/null
 
 # Destroy grimoire (only the installed copy, NOT dev repos)
 rm -rf ~/Daem0nMCP 2>/dev/null
-rm -rf "$USERPROFILE/Daem0nMCP" 2>/dev/null
 
 # Purge current project (if not a dev repo)
 if [[ "$(pwd)" != *"PycharmProjects"* && "$(pwd)" != *"IdeaProjects"* ]]; then
@@ -400,9 +450,33 @@ fi
 echo "Emergency banishment complete."
 ```
 
-For Windows, also:
-1. Remove startup shortcut: `rm -f "$APPDATA/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"`
-2. Edit `~/.claude.json` to remove the daem0nmcp entry from mcpServers
+**Windows (run in order):**
+```bash
+# 1. FIRST: Kill the server process
+netstat -ano | grep 9876  # Note the PID
+taskkill //PID <PID_NUMBER> //F
+sleep 2
+
+# 2. Remove startup shortcut
+rm -f "$HOME/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/Daem0nMCP Server.lnk"
+
+# 3. Dissolve essence
+python -m pip uninstall daem0nmcp -y 2>/dev/null
+
+# 4. Destroy grimoire (only the installed copy, NOT dev repos)
+rm -rf "$HOME/Daem0nMCP" 2>/dev/null
+
+# 5. Purge current project (if not a dev repo)
+if [[ "$(pwd)" != *"PycharmProjects"* && "$(pwd)" != *"IdeaProjects"* ]]; then
+    rm -rf .daem0nmcp/ 2>/dev/null
+    rm -f Summon_Daem0n.md Banish_Daem0n.md AI_INSTRUCTIONS.md 2>/dev/null
+    rm -rf .claude/skills/daem0nmcp-protocol/ 2>/dev/null
+fi
+
+# 6. Edit ~/.claude.json to remove the daem0nmcp entry from mcpServers
+
+echo "Emergency banishment complete."
+```
 
 ---
 
@@ -432,4 +506,4 @@ After any banishment type, inform the summoner:
 
 ---
 
-*Banishment Ritual v1.1: Complete uninstallation instructions for Daem0nMCP with options for full removal, disconnection, or project-specific exorcism. Now includes Windows Startup shortcut removal.*
+*Banishment Ritual v1.2: Complete uninstallation instructions for Daem0nMCP with options for full removal, disconnection, or project-specific exorcism. Now includes Windows Startup shortcut removal, proper server process termination (fixes "Device busy" errors), and fixed path resolution for Git Bash on Windows.*
