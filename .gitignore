@@ -46,6 +46,8 @@ logs/
 # Avoid re-adding
 /nul
 .daem0nmcp/
+.test_tmp/
+.tmp/
 
 # Worktrees
 .worktrees/

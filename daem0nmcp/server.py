@@ -52,7 +52,7 @@ import subprocess
 import asyncio
 import base64
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timezone, timedelta
 
 try:
@@ -69,7 +69,7 @@ try:
     from .models import Memory, Rule
     from . import __version__
     from . import vectors
-    from .logging_config import StructuredFormatter
+    from .logging_config import StructuredFormatter, with_request_id, request_id_var, set_release_callback
 except ImportError:
     # For fastmcp run which executes server.py directly
     from daem0nmcp.config import settings
@@ -79,8 +79,8 @@ except ImportError:
     from daem0nmcp.models import Memory, Rule
     from daem0nmcp import __version__
     from daem0nmcp import vectors
-    from daem0nmcp.logging_config import StructuredFormatter
-from sqlalchemy import select, desc
+    from daem0nmcp.logging_config import StructuredFormatter, with_request_id, request_id_var, set_release_callback
+from sqlalchemy import select, desc, delete
 from dataclasses import dataclass
 
 # Configure logging
@@ -115,12 +115,17 @@ class ProjectContext:
     rules_engine: RulesEngine
     initialized: bool = False
     last_accessed: float = 0.0  # For LRU tracking
+    active_requests: int = 0  # Prevent eviction while in use
 
 
 # Cache of project contexts by normalized path
 _project_contexts: Dict[str, ProjectContext] = {}
 _context_locks: Dict[str, asyncio.Lock] = {}
 _contexts_lock = asyncio.Lock()  # Lock for modifying the dicts themselves
+_task_contexts: Dict[asyncio.Task, Dict[str, int]] = {}
+_task_contexts_lock = asyncio.Lock()
+_last_eviction: float = 0.0
+_EVICTION_INTERVAL_SECONDS: float = 60.0
 
 # Default project path (ONLY used if DAEM0NMCP_PROJECT_ROOT is explicitly set)
 _default_project_path: Optional[str] = os.environ.get('DAEM0NMCP_PROJECT_ROOT')
@@ -152,6 +157,66 @@ def _get_storage_for_project(project_path: str) -> str:
     return str(Path(project_path) / ".daem0nmcp" / "storage")
 
 
+async def _release_task_contexts(task: asyncio.Task) -> None:
+    """Release context usage counts for a completed task."""
+    async with _task_contexts_lock:
+        counts = _task_contexts.pop(task, None)
+
+    if not counts:
+        return
+
+    for path, count in counts.items():
+        ctx = _project_contexts.get(path)
+        if ctx:
+            ctx.active_requests = max(0, ctx.active_requests - count)
+
+
+def _schedule_task_release(task: asyncio.Task) -> None:
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_release_task_contexts(task))
+
+
+async def _track_task_context(ctx: ProjectContext) -> None:
+    """Track which task is using a context to avoid eviction while in-flight."""
+    if not request_id_var.get():
+        return
+
+    task = asyncio.current_task()
+    if task is None:
+        return
+
+    async with _task_contexts_lock:
+        counts = _task_contexts.setdefault(task, {})
+        counts[ctx.project_path] = counts.get(ctx.project_path, 0) + 1
+        ctx.active_requests += 1
+
+        if not getattr(task, "_daem0n_ctx_tracked", False):
+            setattr(task, "_daem0n_ctx_tracked", True)
+            task.add_done_callback(_schedule_task_release)
+
+
+async def _release_current_task_contexts() -> None:
+    """Release context usage for the current task (per tool call)."""
+    task = asyncio.current_task()
+    if task:
+        await _release_task_contexts(task)
+
+
+def _maybe_schedule_eviction(now: float) -> None:
+    """Avoid running eviction too frequently."""
+    global _last_eviction
+    if now - _last_eviction < _EVICTION_INTERVAL_SECONDS:
+        return
+    _last_eviction = now
+    asyncio.create_task(evict_stale_contexts())
+
+
+set_release_callback(_release_current_task_contexts)
+
+
 async def get_project_context(project_path: Optional[str] = None) -> ProjectContext:
     """
     Get or create a ProjectContext for the given project path.
@@ -181,10 +246,14 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
     if normalized in _project_contexts:
         ctx = _project_contexts[normalized]
         if ctx.initialized:
-            ctx.last_accessed = time.time()
+            now = time.time()
+            ctx.last_accessed = now
             # Opportunistic eviction: trigger background cleanup if over limit
             if len(_project_contexts) > MAX_PROJECT_CONTEXTS:
                 asyncio.create_task(evict_stale_contexts())
+            else:
+                _maybe_schedule_eviction(now)
+            await _track_task_context(ctx)
             return ctx
 
     # Get or create lock for this project
@@ -199,7 +268,10 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
         if normalized in _project_contexts:
             ctx = _project_contexts[normalized]
             if ctx.initialized:
-                ctx.last_accessed = time.time()
+                now = time.time()
+                ctx.last_accessed = now
+                _maybe_schedule_eviction(now)
+                await _track_task_context(ctx)
                 return ctx
 
         # Create new context
@@ -225,6 +297,8 @@ async def get_project_context(project_path: Optional[str] = None) -> ProjectCont
         _project_contexts[normalized] = ctx
         logger.info(f"Created project context for: {normalized} (storage: {storage_path})")
 
+        _maybe_schedule_eviction(time.time())
+        await _track_task_context(ctx)
         return ctx
 
 
@@ -255,6 +329,8 @@ async def evict_stale_contexts() -> int:
         ttl_expired = [
             path for path, ctx in _project_contexts.items()
             if (now - ctx.last_accessed) > CONTEXT_TTL_SECONDS
+            and ctx.active_requests == 0
+            and not (_context_locks.get(path) and _context_locks[path].locked())
         ]
 
         for path in ttl_expired:
@@ -268,10 +344,19 @@ async def evict_stale_contexts() -> int:
 
         # Second pass: LRU eviction if still over limit
         while len(_project_contexts) > MAX_PROJECT_CONTEXTS:
-            # Find oldest context
+            candidates = {
+                path: ctx for path, ctx in _project_contexts.items()
+                if ctx.active_requests == 0
+                and not (_context_locks.get(path) and _context_locks[path].locked())
+            }
+
+            if not candidates:
+                break
+
+            # Find oldest idle context
             oldest_path = min(
-                _project_contexts.keys(),
-                key=lambda p: _project_contexts[p].last_accessed
+                candidates.keys(),
+                key=lambda p: candidates[p].last_accessed
             )
             ctx = _project_contexts.pop(oldest_path)
             try:
@@ -314,6 +399,7 @@ logger.info(f"Daem0nMCP Server initialized (default storage: {storage_path})")
 # Tool 1: REMEMBER - Store a memory with conflict detection
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def remember(
     category: str,
     content: str,
@@ -381,6 +467,7 @@ async def remember(
 # Tool 2: RECALL - Semantic memory retrieval with decay
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def recall(
     topic: str,
     categories: Optional[List[str]] = None,
@@ -458,7 +545,8 @@ async def recall(
         offset=offset,
         limit=limit,
         since=since_dt,
-        until=until_dt
+        until=until_dt,
+        project_path=ctx.project_path
     )
 
 
@@ -466,6 +554,7 @@ async def recall(
 # Tool 3: ADD_RULE - Create a decision tree node
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def add_rule(
     trigger: str,
     must_do: Optional[List[str]] = None,
@@ -533,6 +622,7 @@ async def add_rule(
 # Tool 4: CHECK_RULES - Validate an action against rules
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def check_rules(
     action: str,
     context: Optional[Dict[str, Any]] = None,
@@ -574,6 +664,7 @@ async def check_rules(
 # Tool 5: RECORD_OUTCOME - Track if a decision worked
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def record_outcome(
     memory_id: int,
     outcome: str,
@@ -689,6 +780,7 @@ def _get_git_changes(since_date: Optional[datetime] = None, project_path: Option
 # Tool 6: GET_BRIEFING - Smart session start summary
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def get_briefing(
     project_path: Optional[str] = None,
     focus_areas: Optional[List[str]] = None
@@ -811,7 +903,7 @@ async def get_briefing(
     focus_memories = {}
     if focus_areas:
         for area in focus_areas[:3]:  # Limit to 3 areas
-            memories = await ctx.memory_manager.recall(area, limit=5)
+            memories = await ctx.memory_manager.recall(area, limit=5, project_path=ctx.project_path)
             focus_memories[area] = {
                 "found": memories.get("found", 0),
                 "summary": memories.get("summary"),
@@ -855,11 +947,14 @@ async def get_briefing(
 # Tool 7: SEARCH - Full text search across memories
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def search_memories(
     query: str,
     limit: int = 20,
+    offset: int = 0,
+    include_meta: bool = False,
     project_path: Optional[str] = None
-) -> List[Dict[str, Any]]:
+) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Search across all memories with semantic similarity.
 
@@ -869,6 +964,8 @@ async def search_memories(
     Args:
         query: Search text
         limit: Maximum results (default: 20)
+        offset: Number of results to skip (default: 0)
+        include_meta: Return pagination metadata with results
         project_path: Project root path (for multi-project HTTP server support)
 
     Returns:
@@ -878,14 +975,32 @@ async def search_memories(
     if not project_path and not _default_project_path:
         return _missing_project_path_error()
 
+    if offset < 0:
+        return {"error": "offset must be non-negative"}
+
     ctx = await get_project_context(project_path)
-    return await ctx.memory_manager.search(query=query, limit=limit)
+    raw_limit = offset + limit + 1
+    results = await ctx.memory_manager.search(query=query, limit=raw_limit)
+    has_more = len(results) > offset + limit
+    paginated = results[offset:offset + limit]
+
+    if include_meta:
+        return {
+            "query": query,
+            "offset": offset,
+            "limit": limit,
+            "has_more": has_more,
+            "results": paginated
+        }
+
+    return paginated
 
 
 # ============================================================================
 # Tool 8: LIST_RULES - See all configured rules
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def list_rules(
     enabled_only: bool = True,
     limit: int = 50,
@@ -914,6 +1029,7 @@ async def list_rules(
 # Tool 9: UPDATE_RULE - Modify existing rules
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def update_rule(
     rule_id: int,
     must_do: Optional[List[str]] = None,
@@ -960,6 +1076,7 @@ async def update_rule(
 # Tool 10: FIND_RELATED - Discover connected memories
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def find_related(
     memory_id: int,
     limit: int = 5,
@@ -995,6 +1112,7 @@ async def find_related(
 # Tool 11: CONTEXT_CHECK - Quick relevance check for current work
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def context_check(
     description: str,
     project_path: Optional[str] = None
@@ -1022,7 +1140,7 @@ async def context_check(
     ctx = await get_project_context(project_path)
 
     # Get relevant memories
-    memories = await ctx.memory_manager.recall(description, limit=5)
+    memories = await ctx.memory_manager.recall(description, limit=5, project_path=ctx.project_path)
 
     # Check rules
     rules = await ctx.rules_engine.check_rules(description)
@@ -1075,6 +1193,7 @@ async def context_check(
 # Tool 12: RECALL_FOR_FILE - Get memories for a specific file
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def recall_for_file(
     file_path: str,
     limit: int = 10,
@@ -1242,6 +1361,7 @@ def _scan_for_todos(
 # Tool 13: SCAN_TODOS - Find tech debt in codebase
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def scan_todos(
     path: Optional[str] = None,
     auto_remember: bool = False,
@@ -1379,25 +1499,32 @@ def _validate_url(url: str) -> Optional[str]:
     if hostname.lower() in ['localhost', 'localhost.localdomain', '127.0.0.1', '::1']:
         return "Localhost URLs are not allowed"
 
-    # Try to resolve and check for private/reserved IPs
+    # If hostname is an IP literal, validate directly
     try:
-        ip = socket.gethostbyname(hostname)
-        ip_obj = ipaddress.ip_address(ip)
-
-        # Block private, loopback, and link-local addresses
-        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
-            return f"Private/internal IP addresses are not allowed: {ip}"
-
-        # Block cloud metadata endpoint
-        if str(ip_obj) == '169.254.169.254':
-            return "Cloud metadata endpoints are not allowed"
-
-    except socket.gaierror:
-        # Hostname could not be resolved - allow it to fail later at fetch time
-        pass
+        ip_obj = ipaddress.ip_address(hostname)
+        if not ip_obj.is_global:
+            return f"Non-public IP addresses are not allowed: {ip_obj}"
+        return None
     except ValueError:
-        # Not a valid IP address - allow it through
         pass
+
+    # Resolve all addresses and ensure they are public/global
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return "Host could not be resolved"
+
+    if not addr_infos:
+        return "Host could not be resolved"
+
+    for _, _, _, _, sockaddr in addr_infos:
+        ip_str = sockaddr[0]
+        try:
+            ip_obj = ipaddress.ip_address(ip_str)
+        except ValueError:
+            return f"Invalid IP address for host: {ip_str}"
+        if not ip_obj.is_global:
+            return f"Non-public IP addresses are not allowed: {ip_str}"
 
     return None
 
@@ -1411,7 +1538,7 @@ def _fetch_and_extract(url: str) -> Optional[str]:
         return None
 
     try:
-        with httpx.Client(timeout=float(INGEST_TIMEOUT), follow_redirects=False) as client:
+        with httpx.Client(timeout=float(INGEST_TIMEOUT), follow_redirects=False, trust_env=False) as client:
             response = client.get(url)
             response.raise_for_status()
 
@@ -1449,6 +1576,7 @@ def _fetch_and_extract(url: str) -> Optional[str]:
 # Tool 14: INGEST_DOC - Import external documentation
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def ingest_doc(
     url: str,
     topic: str,
@@ -1567,6 +1695,7 @@ async def ingest_doc(
 # Tool 15: PROPOSE_REFACTOR - Generate refactor suggestions
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def propose_refactor(
     file_path: str,
     project_path: Optional[str] = None
@@ -1608,7 +1737,7 @@ async def propose_refactor(
     }
 
     # Get file-specific memories
-    file_memories = await ctx.memory_manager.recall_for_file(file_path)
+    file_memories = await ctx.memory_manager.recall_for_file(file_path, project_path=ctx.project_path)
     result["memories"] = file_memories
 
     # Resolve file path relative to project directory
@@ -1677,6 +1806,7 @@ async def propose_refactor(
 # Tool 16: REBUILD_INDEX - Force rebuild of search indexes
 # ============================================================================
 @mcp.tool()
+@with_request_id
 async def rebuild_index(
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -1709,6 +1839,7 @@ async def rebuild_index(
 
 
 @mcp.tool()
+@with_request_id
 async def export_data(
     project_path: Optional[str] = None,
     include_vectors: bool = False
@@ -1742,10 +1873,13 @@ async def export_data(
                 "context": m.context,
                 "tags": m.tags,
                 "file_path": m.file_path,
+                "file_path_relative": m.file_path_relative,
                 "keywords": m.keywords,
                 "is_permanent": m.is_permanent,
                 "outcome": m.outcome,
                 "worked": m.worked,
+                "pinned": m.pinned,
+                "archived": m.archived,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
                 "updated_at": m.updated_at.isoformat() if m.updated_at else None,
                 # Optionally include vectors (base64 encoded)
@@ -1785,6 +1919,7 @@ async def export_data(
 
 
 @mcp.tool()
+@with_request_id
 async def import_data(
     data: Dict[str, Any],
     project_path: Optional[str] = None,
@@ -1809,10 +1944,25 @@ async def import_data(
 
     ctx = await get_project_context(project_path)
 
+    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+        if parsed.tzinfo:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+
     memories_imported = 0
     rules_imported = 0
 
     async with ctx.db_manager.get_session() as session:
+        if not merge:
+            await session.execute(delete(Memory))
+            await session.execute(delete(Rule))
+
         # Import memories
         for mem_data in data.get("memories", []):
             # Decode vector if present
@@ -1826,7 +1976,7 @@ async def import_data(
             # Normalize file_path if present and project_path is available
             from .memory import _normalize_file_path
             file_path_abs = mem_data.get("file_path")
-            file_path_rel = None
+            file_path_rel = mem_data.get("file_path_relative")
             if file_path_abs and ctx.project_path:
                 file_path_abs, file_path_rel = _normalize_file_path(file_path_abs, ctx.project_path)
 
@@ -1842,6 +1992,10 @@ async def import_data(
                 is_permanent=mem_data.get("is_permanent", False),
                 outcome=mem_data.get("outcome"),
                 worked=mem_data.get("worked"),
+                pinned=mem_data.get("pinned", False),
+                archived=mem_data.get("archived", False),
+                created_at=_parse_datetime(mem_data.get("created_at")),
+                updated_at=_parse_datetime(mem_data.get("updated_at")),
                 vector_embedding=vector_bytes
             )
             session.add(memory)
@@ -1875,6 +2029,7 @@ async def import_data(
 
 
 @mcp.tool()
+@with_request_id
 async def pin_memory(
     memory_id: int,
     pinned: bool = True,
@@ -1919,6 +2074,7 @@ async def pin_memory(
 
 
 @mcp.tool()
+@with_request_id
 async def prune_memories(
     older_than_days: int = 90,
     categories: Optional[List[str]] = None,
@@ -1987,6 +2143,7 @@ async def prune_memories(
 
 
 @mcp.tool()
+@with_request_id
 async def archive_memory(
     memory_id: int,
     archived: bool = True,
@@ -2027,6 +2184,7 @@ async def archive_memory(
 
 
 @mcp.tool()
+@with_request_id
 async def cleanup_memories(
     dry_run: bool = True,
     merge_duplicates: bool = True,
@@ -2095,17 +2253,31 @@ async def cleanup_memories(
         merged = 0
         if merge_duplicates:
             for key, mems in duplicates.items():
+                def _to_naive(dt_value: Optional[datetime]) -> datetime:
+                    if not dt_value:
+                        return datetime.min
+                    return dt_value.replace(tzinfo=None) if dt_value.tzinfo else dt_value
+
+                def _outcome_timestamp(mem: Memory) -> datetime:
+                    return _to_naive(mem.updated_at or mem.created_at)
+
                 # Sort by created_at descending (newest first)
-                mems.sort(key=lambda m: m.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+                mems.sort(key=lambda m: _to_naive(m.created_at), reverse=True)
                 keeper = mems[0]
+
+                # Pick the most recent outcome across duplicates (if any)
+                outcome_source = None
+                for candidate in mems:
+                    if candidate.outcome:
+                        if outcome_source is None or _outcome_timestamp(candidate) > _outcome_timestamp(outcome_source):
+                            outcome_source = candidate
+
+                if outcome_source:
+                    keeper.outcome = outcome_source.outcome
+                    keeper.worked = outcome_source.worked
 
                 # Merge outcomes, tags, and metadata from others
                 for dupe in mems[1:]:
-                    # Preserve outcome if keeper doesn't have one
-                    if dupe.outcome and not keeper.outcome:
-                        keeper.outcome = dupe.outcome
-                        keeper.worked = dupe.worked
-
                     # Preserve pinned status (if any duplicate is pinned, keep pinned)
                     if dupe.pinned and not keeper.pinned:
                         keeper.pinned = True
@@ -2139,6 +2311,7 @@ async def cleanup_memories(
 
 
 @mcp.tool()
+@with_request_id
 async def health(
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:

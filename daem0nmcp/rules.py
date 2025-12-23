@@ -169,6 +169,7 @@ class RulesEngine:
         Returns:
             Matching rules with combined guidance
         """
+        await self._check_index_freshness()
         index = await self._ensure_index()
 
         # Search for matching rules using TF-IDF

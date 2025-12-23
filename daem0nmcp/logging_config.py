@@ -4,12 +4,15 @@ import json
 import logging
 import time
 import uuid
+from typing import Callable, Optional, Awaitable
+import inspect
 from contextvars import ContextVar
 from functools import wraps
 from typing import Callable
 
 # Context variable for request tracking
 request_id_var: ContextVar[str] = ContextVar('request_id', default='')
+_release_callback: Optional[Callable[[], Awaitable[None]]] = None
 
 
 class StructuredFormatter(logging.Formatter):
@@ -51,6 +54,16 @@ def with_request_id(func: Callable) -> Callable:
                 f"Tool completed",
                 extra={'duration_ms': round(duration_ms, 2), 'tool_name': func.__name__}
             )
+            if _release_callback:
+                maybe_coro = _release_callback()
+                if inspect.isawaitable(maybe_coro):
+                    await maybe_coro
             request_id_var.reset(token)
 
     return wrapper
+
+
+def set_release_callback(callback: Callable[[], Awaitable[None]]) -> None:
+    """Register a callback to release per-request resources."""
+    global _release_callback
+    _release_callback = callback

@@ -67,14 +67,15 @@ def _normalize_file_path(file_path: Optional[str], project_path: str) -> Tuple[O
     if not path.is_absolute():
         path = Path(project_path) / path
 
-    absolute = str(path.resolve())
+    resolved = path.resolve()
+    absolute = str(resolved)
 
     # Compute relative path from project root
     try:
-        relative = str(path.resolve().relative_to(Path(project_path).resolve()))
+        relative = resolved.relative_to(Path(project_path).resolve()).as_posix()
     except ValueError:
         # Path is outside project root, fallback to just filename
-        relative = str(path.name)
+        relative = Path(path.name).as_posix()
 
     # Case-fold on Windows for consistent matching
     if sys.platform == 'win32':
@@ -289,6 +290,7 @@ class MemoryManager:
         limit: int = 10,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
+        project_path: Optional[str] = None,
         include_warnings: bool = True,
         decay_half_life_days: float = 30.0
     ) -> Dict[str, Any]:
@@ -316,6 +318,7 @@ class MemoryManager:
             limit: Max memories per category
             since: Only include memories created after this date
             until: Only include memories created before this date
+            project_path: Optional project root for file path normalization
             include_warnings: Always include warnings even if not in categories
             decay_half_life_days: How quickly old memories lose relevance
 
@@ -343,13 +346,16 @@ class MemoryManager:
             # Build query with date filters at database level for performance
             query = select(Memory).where(Memory.id.in_(memory_ids))
 
+            def _to_utc_naive(dt_value: datetime) -> datetime:
+                if dt_value.tzinfo:
+                    return dt_value.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt_value
+
             if since:
-                since_aware = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
-                query = query.where(Memory.created_at >= since_aware)
+                query = query.where(Memory.created_at >= _to_utc_naive(since))
 
             if until:
-                until_aware = until if until.tzinfo else until.replace(tzinfo=timezone.utc)
-                query = query.where(Memory.created_at <= until_aware)
+                query = query.where(Memory.created_at <= _to_utc_naive(until))
 
             result = await session.execute(query)
             memories = {m.id: m for m in result.scalars().all()}
@@ -363,15 +369,34 @@ class MemoryManager:
 
         # Filter by file_path if specified
         if file_path:
-            # Normalize paths (Windows vs Unix)
+            normalized_abs = None
+            normalized_rel = None
+            if project_path:
+                normalized_abs, normalized_rel = _normalize_file_path(file_path, project_path)
+
             normalized_filter = file_path.replace('\\', '/')
+            if normalized_abs:
+                normalized_abs = normalized_abs.replace('\\', '/')
+            if normalized_rel:
+                normalized_rel = normalized_rel.replace('\\', '/')
+
+            def _matches_path(mem: Memory) -> bool:
+                mem_abs = mem.file_path.replace('\\', '/') if mem.file_path else ""
+                mem_rel = mem.file_path_relative.replace('\\', '/') if getattr(mem, "file_path_relative", None) else ""
+
+                if normalized_abs and mem_abs == normalized_abs:
+                    return True
+                if normalized_rel and mem_rel == normalized_rel:
+                    return True
+                if mem_abs and (mem_abs.endswith(normalized_filter) or normalized_filter.endswith(mem_abs)):
+                    return True
+                if mem_rel and (mem_rel.endswith(normalized_filter) or normalized_filter.endswith(mem_rel)):
+                    return True
+                return False
+
             memories = {
                 mid: mem for mid, mem in memories.items()
-                if mem.file_path and (
-                    mem.file_path.replace('\\', '/') == normalized_filter or
-                    mem.file_path.replace('\\', '/').endswith(normalized_filter) or
-                    normalized_filter.endswith(mem.file_path.replace('\\', '/'))
-                )
+                if _matches_path(mem)
             }
 
         # Score with decay and organize
@@ -584,6 +609,7 @@ class MemoryManager:
         """
         Search across all memories using semantic similarity.
         """
+        await self._check_index_freshness()
         index = await self._ensure_index()
 
         # Search using TF-IDF

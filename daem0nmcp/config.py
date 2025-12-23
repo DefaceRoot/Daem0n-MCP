@@ -8,11 +8,17 @@ Example: DAEM0NMCP_LOG_LEVEL=DEBUG
 import shutil
 from pathlib import Path
 from typing import Optional, List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Daem0nMCP configuration settings."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="DAEM0NMCP_",
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
 
     # Core paths
     project_root: str = "."
@@ -39,11 +45,6 @@ class Settings(BaseSettings):
     ]
     todo_skip_extensions: List[str] = [".pyc", ".pyo", ".so", ".dylib"]
     todo_max_files: int = 500
-
-    class Config:
-        env_prefix = "DAEM0NMCP_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
     def _migrate_legacy_storage(self, project_path: Path, new_storage: Path) -> bool:
         """
