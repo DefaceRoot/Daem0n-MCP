@@ -384,6 +384,7 @@
             position: relative;
             overflow: hidden;
             box-shadow: 0 0 20px rgba(139, 0, 0, 0.4);
+            cursor: pointer;
         }
 
         .grimoire-btn::before {
@@ -557,12 +558,12 @@
                 Your familiar will handle the binding automatically.
             </p>
             <div class="grimoire-buttons">
-                <a href="https://raw.githubusercontent.com/DasBluEyedDevil/Daem0n-MCP/main/Summon_Daem0n.md" class="grimoire-btn" download="Summon_Daem0n.md">
+                <button class="grimoire-btn" onclick="downloadFile('https://raw.githubusercontent.com/DasBluEyedDevil/Daem0n-MCP/main/Summon_Daem0n.md', 'Summon_Daem0n.md')">
                     Summon Daem0n
-                </a>
-                <a href="https://raw.githubusercontent.com/DasBluEyedDevil/Daem0n-MCP/main/Banish_Daem0n.md" class="grimoire-btn" download="Banish_Daem0n.md">
+                </button>
+                <button class="grimoire-btn" onclick="downloadFile('https://raw.githubusercontent.com/DasBluEyedDevil/Daem0n-MCP/main/Banish_Daem0n.md', 'Banish_Daem0n.md')">
                     Banish Daem0n
-                </a>
+                </button>
             </div>
             <p style="margin-top: 1.5rem; color: var(--ash); font-size: 0.95rem;">
                 The Banishment scroll severs the bond, should you wish to release the Daem0n.
@@ -703,6 +704,27 @@
                 this.style.transform = '';
             }, 1000);
         });
+
+        // Download file function for cross-origin downloads
+        async function downloadFile(url, filename) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const blob = await response.blob();
+                const blobUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(blobUrl);
+            } catch (error) {
+                console.error('Download failed:', error);
+                // Fallback: open in new tab
+                window.open(url, '_blank');
+            }
+        }
     </script>
 </body>
 </html>
