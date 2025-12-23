@@ -13,7 +13,7 @@
 
 **AI Memory & Decision System** - Give AI agents persistent memory and consistent decision-making with *actual* semantic understanding.
 
-## What's New in v2.5
+## What's New in v2.5.0
 
 - **Windows HTTP Transport**: Full Windows support via streamable-http (bypasses stdio bugs)
 - **Ritual-Themed Installation**: `Summon_Daem0n.md` and `Banish_Daem0n.md` for fun
