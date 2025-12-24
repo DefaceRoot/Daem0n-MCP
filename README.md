@@ -353,6 +353,36 @@ python -m daem0nmcp.cli install-hooks
 python -m daem0nmcp.cli uninstall-hooks
 ```
 
+## Upgrading
+
+Upgrading Daem0n-MCP is straightforward:
+
+### 1. Update the Code
+
+```bash
+# If installed via pip
+pip install --upgrade daem0nmcp
+
+# If installed from source
+cd ~/Daem0nMCP && git pull && pip install -e .
+```
+
+### 2. Migrations Run Automatically
+
+Database migrations are applied automatically when any MCP tool runs. The first time you use `get_briefing()`, `remember()`, or any other tool after upgrading, the database schema is updated.
+
+No manual migration step required.
+
+### 3. Install Enforcement Hooks (New in 2.7+)
+
+If upgrading from a version before 2.7, install the new pre-commit hooks:
+
+```bash
+python -m daem0nmcp.cli install-hooks
+```
+
+This enables automatic enforcement that blocks commits when decisions lack outcomes.
+
 ## Development
 
 ```bash
