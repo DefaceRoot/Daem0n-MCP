@@ -10,6 +10,7 @@ Usage:
     python -m daem0nmcp.cli briefing
     python -m daem0nmcp.cli scan-todos [--auto-remember] [--path PATH]
     python -m daem0nmcp.cli migrate [--backfill-vectors]
+    python -m daem0nmcp.cli pre-commit [--interactive] [--staged-files FILE ...]
 
 Global Options:
     --json              Output as JSON for automation/scripting
@@ -84,6 +85,70 @@ async def get_briefing(db: DatabaseManager, memory: MemoryManager) -> dict:
     return await memory.get_statistics()
 
 
+async def run_precommit(checker, staged_files: list, project_path: str, interactive: bool, json_output: bool) -> int:
+    """
+    Run pre-commit checks and return exit code.
+
+    Args:
+        checker: PreCommitChecker instance
+        staged_files: List of file paths being committed
+        project_path: Project root path
+        interactive: If True, prompt user for warnings
+        json_output: If True, output JSON instead of human-readable text
+
+    Returns:
+        Exit code: 0 (success), 1 (blocked), 2 (user cancelled)
+    """
+    try:
+        await checker.db.init_db()
+        result = await checker.check(staged_files=staged_files, project_path=project_path)
+    except Exception as e:
+        if json_output:
+            print(json.dumps({"error": str(e), "can_commit": False, "blocks": [], "warnings": []}))
+        else:
+            print(f"ERROR: Pre-commit check failed: {e}", file=sys.stderr)
+        return 1
+
+    if json_output:
+        print(json.dumps(result, default=str))
+        return 0 if result["can_commit"] else 1
+
+    # Print blocks
+    if result["blocks"]:
+        print("BLOCKED: The following issues must be resolved:\n")
+        for block in result["blocks"]:
+            print(f"  [{block['type']}] {block['message']}")
+        print()
+
+    # Print warnings
+    if result["warnings"]:
+        print("WARNINGS:\n")
+        for warn in result["warnings"]:
+            print(f"  {warn['message']}")
+        print()
+
+    # Clean result
+    if not result["blocks"] and not result["warnings"]:
+        print("OK: No enforcement issues found.")
+        return 0
+
+    # Blocked - must resolve
+    if result["blocks"]:
+        print("\nCommit blocked. Resolve issues with:")
+        print("  python -m daem0nmcp.cli status")
+        print("  python -m daem0nmcp.cli record-outcome <id> \"<outcome>\" --worked|--failed")
+        return 1
+
+    # Warnings only - can proceed with confirmation
+    if interactive:
+        response = input("\nProceed with commit despite warnings? [y/N]: ").strip().lower()
+        if response != "y":
+            print("Commit cancelled by user.")
+            return 2
+
+    return 0
+
+
 def format_check_result(result: dict) -> str:
     """Format check result for CLI output."""
     lines = []
@@ -136,6 +201,13 @@ def main():
     migrate_parser = subparsers.add_parser("migrate", help="Run database migrations")
     migrate_parser.add_argument("--backfill-vectors", action="store_true",
                                 help="Backfill vector embeddings for existing memories")
+
+    # pre-commit command
+    precommit_parser = subparsers.add_parser("pre-commit", help="Run pre-commit enforcement checks")
+    precommit_parser.add_argument("--interactive", "-i", action="store_true",
+                                  help="Prompt for resolution of warnings")
+    precommit_parser.add_argument("--staged-files", nargs="*", default=None,
+                                  help="Staged files (auto-detected from git if not provided)")
 
     args = parser.parse_args()
 
@@ -225,6 +297,28 @@ def main():
                 if count == 0:
                     print("Database is up to date.")
                 print("\nTo also backfill vectors, run: python -m daem0nmcp.cli migrate --backfill-vectors")
+
+    elif args.command == "pre-commit":
+        import subprocess
+        from .enforcement import PreCommitChecker
+
+        # Get staged files from git if not provided
+        staged_files = args.staged_files
+        if staged_files is None:
+            try:
+                result = subprocess.run(
+                    ["git", "diff", "--cached", "--name-only"],
+                    capture_output=True, text=True, check=False,
+                    cwd=args.project_path or "."
+                )
+                staged_files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+            except (subprocess.SubprocessError, FileNotFoundError, OSError):
+                staged_files = []
+
+        project_path = args.project_path or os.getcwd()
+        checker = PreCommitChecker(db, memory)
+        exit_code = asyncio.run(run_precommit(checker, staged_files, project_path, args.interactive, args.json))
+        sys.exit(exit_code)
 
 
 if __name__ == "__main__":

@@ -316,3 +316,33 @@ class TestPreCommitChecker:
         pending_warnings = [w for w in result["warnings"] if w["type"] == "PENDING_DECISION_RECENT"]
         assert len(pending_warnings) == 1
         assert pending_warnings[0]["memory_id"] == memory_id
+
+
+class TestPreCommitCLI:
+    """Test pre-commit CLI command."""
+
+    def test_precommit_command_exists(self):
+        """The pre-commit subcommand should exist."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "daem0nmcp.cli", "pre-commit", "--help"],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        assert "pre-commit" in result.stdout.lower() or "interactive" in result.stdout.lower()
+
+    def test_precommit_with_no_staged_files(self, tmp_path):
+        """pre-commit with no files should pass."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "daem0nmcp.cli",
+             "--project-path", str(tmp_path),
+             "pre-commit", "--staged-files"],
+            capture_output=True, text=True
+        )
+        # Should pass (exit 0) with no files
+        assert result.returncode == 0
