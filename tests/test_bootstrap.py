@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from daem0nmcp.server import _extract_project_identity, _extract_architecture
+from daem0nmcp.server import _extract_project_identity, _extract_architecture, _extract_conventions
 
 
 class TestExtractProjectIdentity:
@@ -108,3 +108,40 @@ class TestExtractArchitecture:
 
         assert result is not None
         assert "src" in result
+
+
+class TestExtractConventions:
+    """Tests for _extract_conventions extractor."""
+
+    def test_extracts_contributing_guidelines(self, tmp_path):
+        """Should extract content from CONTRIBUTING.md."""
+        contributing = "# Contributing\n\n## Code Style\nUse 4 spaces for indentation."
+        (tmp_path / "CONTRIBUTING.md").write_text(contributing)
+
+        result = _extract_conventions(str(tmp_path))
+
+        assert result is not None
+        assert "Code Style" in result
+
+    def test_detects_eslint_config(self, tmp_path):
+        """Should detect ESLint configuration."""
+        (tmp_path / ".eslintrc.json").write_text('{"extends": "airbnb"}')
+
+        result = _extract_conventions(str(tmp_path))
+
+        assert result is not None
+        assert "eslint" in result.lower()
+
+    def test_detects_ruff_config(self, tmp_path):
+        """Should detect Ruff configuration."""
+        (tmp_path / "ruff.toml").write_text('[tool.ruff]\nline-length = 88')
+
+        result = _extract_conventions(str(tmp_path))
+
+        assert result is not None
+        assert "ruff" in result.lower()
+
+    def test_returns_none_when_no_configs(self, tmp_path):
+        """Should return None when no convention configs found."""
+        result = _extract_conventions(str(tmp_path))
+        assert result is None

@@ -906,6 +906,84 @@ def _extract_architecture(project_path: str) -> Optional[str]:
     return "Architecture overview:\n\n" + "\n\n".join(parts)
 
 
+def _extract_conventions(project_path: str) -> Optional[str]:
+    """
+    Extract coding conventions from config files and docs.
+
+    Checks for:
+    1. CONTRIBUTING.md / CONTRIBUTING
+    2. Linter configs (.eslintrc, ruff.toml, .pylintrc, etc.)
+    3. Formatter configs (.prettierrc, pyproject.toml [tool.black])
+
+    Returns:
+        Formatted string with coding conventions, or None if nothing found.
+    """
+    root = Path(project_path)
+    parts = []
+
+    # Check CONTRIBUTING.md
+    for contrib_name in ["CONTRIBUTING.md", "CONTRIBUTING.rst", "CONTRIBUTING"]:
+        contrib = root / contrib_name
+        if contrib.exists():
+            try:
+                content = contrib.read_text(encoding='utf-8', errors='ignore')[:1500]
+                if content.strip():
+                    parts.append(f"Contributing guidelines:\n{content}")
+                break
+            except Exception as e:
+                logger.debug(f"Failed to read {contrib_name}: {e}")
+
+    # Detect linter/formatter configs
+    config_files = [
+        (".eslintrc", "ESLint"),
+        (".eslintrc.js", "ESLint"),
+        (".eslintrc.json", "ESLint"),
+        (".prettierrc", "Prettier"),
+        (".prettierrc.json", "Prettier"),
+        ("prettier.config.js", "Prettier"),
+        ("ruff.toml", "Ruff"),
+        (".pylintrc", "Pylint"),
+        ("pylintrc", "Pylint"),
+        ("mypy.ini", "Mypy"),
+        (".flake8", "Flake8"),
+        ("setup.cfg", "Setup.cfg"),
+        ("tslint.json", "TSLint"),
+        ("biome.json", "Biome"),
+        (".editorconfig", "EditorConfig"),
+    ]
+
+    found_configs = []
+    for filename, tool_name in config_files:
+        if (root / filename).exists():
+            found_configs.append(tool_name)
+
+    # Check pyproject.toml for tool configs
+    pyproject = root / "pyproject.toml"
+    if pyproject.exists():
+        try:
+            content = pyproject.read_text(encoding='utf-8', errors='ignore')
+            if '[tool.black]' in content:
+                found_configs.append("Black")
+            if '[tool.ruff]' in content:
+                found_configs.append("Ruff")
+            if '[tool.mypy]' in content:
+                found_configs.append("Mypy")
+            if '[tool.pytest]' in content or '[tool.pytest.ini_options]' in content:
+                found_configs.append("Pytest")
+        except Exception:
+            pass
+
+    if found_configs:
+        # Deduplicate
+        unique_configs = list(dict.fromkeys(found_configs))
+        parts.append(f"Code tools configured: {', '.join(unique_configs)}")
+
+    if not parts:
+        return None
+
+    return "Coding conventions:\n\n" + "\n\n".join(parts)
+
+
 # ============================================================================
 # Helper: Git awareness
 # ============================================================================
