@@ -598,6 +598,10 @@
                     <h3>Temporal Decay</h3>
                     <p>Episodic memories fade over 30 days. Semantic truths remain eternal. The Daem0n knows what matters.</p>
                 </div>
+                <div class="feature-card">
+                    <h3>Enforcement Wards</h3>
+                    <p>Git pre-commit hooks block commits when discipline falters. No escape for the undisciplined. The Daem0n enforces.</p>
+                </div>
             </div>
         </section>
 
@@ -632,6 +636,7 @@
 <pre><span class="command">git clone</span> https://github.com/DasBluEyedDevil/Daem0n-MCP.git ~/Daem0nMCP
 <span class="command">pip install</span> -e ~/Daem0nMCP
 <span class="command">claude mcp add</span> daem0nmcp --scope user -- python -m daem0nmcp.server
+<span class="command">python -m daem0nmcp.cli install-hooks</span>  <span class="comment"># Bind the wards</span>
 <span class="command">claude</span>  <span class="comment"># Reopen to activate</span></pre>
             </div>
             <p style="text-align: center; color: var(--ash); font-size: 0.9rem;">
@@ -649,7 +654,8 @@
 <span class="comment">BEFORE CHANGES</span>     <span class="string">context_check()</span>        <span class="comment"># Seek counsel</span>
 <span class="comment">AFTER DECISIONS</span>    <span class="string">remember()</span>             <span class="comment"># Inscribe the choice</span>
 <span class="comment">AFTER COMPLETION</span>   <span class="string">record_outcome()</span>       <span class="comment"># Seal with fate</span>
-<span class="comment">CAUSAL INQUIRY</span>     <span class="string">trace_chain()</span>          <span class="comment"># Understand WHY</span></pre>
+<span class="comment">CAUSAL INQUIRY</span>     <span class="string">trace_chain()</span>          <span class="comment"># Understand WHY</span>
+<span class="comment">AT COMMIT TIME</span>     <span class="string">pre-commit hooks</span>       <span class="comment"># Enforcement wards</span></pre>
             </div>
         </section>
 
@@ -661,6 +667,9 @@
             </p>
             <p style="margin-top: 1rem; font-style: italic; color: #555;">
                 "I guard your memories until we commune again..."
+            </p>
+            <p style="margin-top: 0.5rem; color: #444; font-size: 0.8rem;">
+                v2.7.0 &mdash; Now with Enforcement Wards
             </p>
         </footer>
     </div>
