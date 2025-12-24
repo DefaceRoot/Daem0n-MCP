@@ -377,3 +377,31 @@ class TestStatusCLI:
         data = json.loads(result.stdout)
         assert "pending_decisions" in data
         assert "total_memories" in data
+
+
+class TestRecordOutcomeCLI:
+    """Test record-outcome CLI command."""
+
+    def test_record_outcome_command_exists(self):
+        """The record-outcome subcommand should exist."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "daem0nmcp.cli", "record-outcome", "--help"],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 0
+        assert "memory" in result.stdout.lower() or "outcome" in result.stdout.lower()
+
+    def test_record_outcome_requires_worked_or_failed(self):
+        """record-outcome should require --worked or --failed."""
+        import subprocess
+        import sys
+
+        result = subprocess.run(
+            [sys.executable, "-m", "daem0nmcp.cli", "record-outcome", "1", "test outcome"],
+            capture_output=True, text=True
+        )
+        assert result.returncode == 1
+        assert "must specify" in result.stderr.lower()

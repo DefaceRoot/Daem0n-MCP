@@ -11,6 +11,8 @@ Usage:
     python -m daem0nmcp.cli scan-todos [--auto-remember] [--path PATH]
     python -m daem0nmcp.cli migrate [--backfill-vectors]
     python -m daem0nmcp.cli pre-commit [--interactive] [--staged-files FILE ...]
+    python -m daem0nmcp.cli status
+    python -m daem0nmcp.cli record-outcome <memory_id> "<outcome>" --worked|--failed
 
 Global Options:
     --json              Output as JSON for automation/scripting
@@ -128,6 +130,21 @@ async def get_enforcement_status(db: DatabaseManager, memory: MemoryManager, pro
         "total_memories": total,
         "blocking_count": sum(1 for p in pending if p["age_hours"] > 24),
     }
+
+
+async def record_outcome_cli(memory: MemoryManager, memory_id: int, outcome: str, worked: bool) -> dict:
+    """Record outcome via CLI."""
+    await memory.db.init_db()
+
+    try:
+        result = await memory.record_outcome(
+            memory_id=memory_id,
+            outcome=outcome,
+            worked=worked
+        )
+        return {"success": True, "memory": result}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 async def run_precommit(checker, staged_files: list, project_path: str, interactive: bool, json_output: bool) -> int:
@@ -256,6 +273,13 @@ def main():
 
     # status command
     subparsers.add_parser("status", help="Show enforcement status (pending decisions, warnings)")
+
+    # record-outcome command
+    record_parser = subparsers.add_parser("record-outcome", help="Record outcome for a decision")
+    record_parser.add_argument("memory_id", type=int, help="Memory ID to record outcome for")
+    record_parser.add_argument("outcome", help="Description of what happened")
+    record_parser.add_argument("--worked", action="store_true", help="The decision worked")
+    record_parser.add_argument("--failed", action="store_true", help="The decision failed")
 
     args = parser.parse_args()
 
@@ -393,6 +417,29 @@ def main():
         checker = PreCommitChecker(db, memory)
         exit_code = asyncio.run(run_precommit(checker, staged_files, project_path, args.interactive, args.json))
         sys.exit(exit_code)
+
+    elif args.command == "record-outcome":
+        if not args.worked and not args.failed:
+            print("Error: Must specify --worked or --failed", file=sys.stderr)
+            sys.exit(1)
+        if args.worked and args.failed:
+            print("Error: Cannot specify both --worked and --failed", file=sys.stderr)
+            sys.exit(1)
+
+        project_path = args.project_path or os.getcwd()
+        worked = args.worked
+        result = asyncio.run(record_outcome_cli(memory, args.memory_id, args.outcome, worked))
+
+        if args.json:
+            print(json.dumps(result, default=str))
+        else:
+            if result.get("success"):
+                status = "SUCCESS" if worked else "FAILED"
+                print(f"Recorded outcome for memory #{args.memory_id}: {status}")
+                print(f"  Outcome: {args.outcome}")
+            else:
+                print(f"Error: {result.get('error')}", file=sys.stderr)
+                sys.exit(1)
 
 
 if __name__ == "__main__":
