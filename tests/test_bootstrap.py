@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from daem0nmcp.server import _extract_project_identity, _extract_architecture, _extract_conventions
+from daem0nmcp.server import _extract_project_identity, _extract_architecture, _extract_conventions, _extract_entry_points
 
 
 class TestExtractProjectIdentity:
@@ -144,4 +144,48 @@ class TestExtractConventions:
     def test_returns_none_when_no_configs(self, tmp_path):
         """Should return None when no convention configs found."""
         result = _extract_conventions(str(tmp_path))
+        assert result is None
+
+
+class TestExtractEntryPoints:
+    """Tests for _extract_entry_points extractor."""
+
+    def test_finds_python_entry_points(self, tmp_path):
+        """Should find main.py, app.py, etc."""
+        (tmp_path / "main.py").write_text("# main")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("# app")
+
+        result = _extract_entry_points(str(tmp_path))
+
+        assert result is not None
+        assert "main.py" in result
+
+    def test_finds_node_entry_points(self, tmp_path):
+        """Should find index.js, index.ts."""
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "index.ts").write_text("// index")
+
+        result = _extract_entry_points(str(tmp_path))
+
+        assert result is not None
+        assert "index.ts" in result
+
+    def test_finds_cli_entry_points(self, tmp_path):
+        """Should find cli.py, __main__.py."""
+        (tmp_path / "myapp").mkdir()
+        (tmp_path / "myapp" / "__main__.py").write_text("# main")
+        (tmp_path / "myapp" / "cli.py").write_text("# cli")
+
+        result = _extract_entry_points(str(tmp_path))
+
+        assert result is not None
+        assert "__main__.py" in result
+
+    def test_returns_none_when_no_entry_points(self, tmp_path):
+        """Should return None when no entry points found."""
+        (tmp_path / "utils.py").write_text("# utils")
+
+        result = _extract_entry_points(str(tmp_path))
+
         assert result is None

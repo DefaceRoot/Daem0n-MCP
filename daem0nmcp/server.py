@@ -984,6 +984,65 @@ def _extract_conventions(project_path: str) -> Optional[str]:
     return "Coding conventions:\n\n" + "\n\n".join(parts)
 
 
+def _extract_entry_points(project_path: str) -> Optional[str]:
+    """
+    Find common entry point files in the project.
+
+    Looks for files like:
+    - main.py, app.py, cli.py, __main__.py (Python)
+    - index.js, index.ts, main.js, main.ts (Node.js)
+    - main.rs (Rust)
+    - main.go, cmd/ (Go)
+    - server.py, server.js, api.py (Servers)
+
+    Returns:
+        Formatted list of entry points found, or None if none found.
+    """
+    root = Path(project_path)
+    entry_point_patterns = [
+        "main.py", "app.py", "cli.py", "__main__.py", "server.py", "api.py",
+        "wsgi.py", "asgi.py", "manage.py",
+        "index.js", "index.ts", "index.tsx", "main.js", "main.ts",
+        "server.js", "server.ts", "app.js", "app.ts",
+        "main.rs", "lib.rs",
+        "main.go",
+    ]
+
+    found = []
+
+    def scan_dir(dir_path: Path, depth: int = 0):
+        if depth > 2:  # Only scan 2 levels deep
+            return
+        try:
+            for item in dir_path.iterdir():
+                if item.name in BOOTSTRAP_EXCLUDED_DIRS:
+                    continue
+                if item.is_file() and item.name in entry_point_patterns:
+                    rel_path = item.relative_to(root)
+                    found.append(str(rel_path))
+                elif item.is_dir() and not item.name.startswith('.'):
+                    scan_dir(item, depth + 1)
+        except PermissionError:
+            pass
+
+    scan_dir(root)
+
+    # Also check for cmd/ directory (Go convention)
+    cmd_dir = root / "cmd"
+    if cmd_dir.exists() and cmd_dir.is_dir():
+        try:
+            for item in cmd_dir.iterdir():
+                if item.is_dir():
+                    found.append(f"cmd/{item.name}/")
+        except PermissionError:
+            pass
+
+    if not found:
+        return None
+
+    return "Entry points identified:\n" + "\n".join(f"  - {f}" for f in sorted(found)[:15])
+
+
 # ============================================================================
 # Helper: Git awareness
 # ============================================================================
