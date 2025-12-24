@@ -15,7 +15,7 @@ PRE_COMMIT_HOOK = '''#!/bin/sh
 PROJECT_ROOT="$(git rev-parse --show-toplevel)"
 
 # Run the pre-commit check
-python -m daem0nmcp.cli pre-commit --project-path "$PROJECT_ROOT"
+python -m daem0nmcp.cli --project-path "$PROJECT_ROOT" pre-commit
 
 # Exit with the same code
 exit $?
