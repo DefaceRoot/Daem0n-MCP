@@ -7,4 +7,4 @@ try:
     __version__ = _get_version("daem0nmcp")
 except Exception:
     # Fallback for development or if package not installed
-    __version__ = "2.5.0"
+    __version__ = "2.6.0"
