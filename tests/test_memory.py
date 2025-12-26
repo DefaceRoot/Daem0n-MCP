@@ -703,3 +703,200 @@ class TestPathNormalization:
 
         # Should still work, just stores the original path
         assert "id" in result
+
+
+class TestCompactMemories:
+    """Tests for memory compaction functionality."""
+
+    @pytest.fixture
+    async def memories_to_compact(self, memory_manager):
+        """Create several episodic memories eligible for compaction."""
+        memories = []
+        for i in range(5):
+            mem = await memory_manager.remember(
+                category="learning",
+                content=f"Learning {i}: Some insight about topic {i}",
+                rationale=f"Discovered during session {i}",
+                tags=["session", "compaction-test"],
+                project_path="/test/project"
+            )
+            memories.append(mem)
+        return memories
+
+    @pytest.mark.asyncio
+    async def test_compact_creates_summary_memory(self, memory_manager, memories_to_compact):
+        """Compaction creates a new summary memory."""
+        result = await memory_manager.compact_memories(
+            summary="Summary of 5 learnings about various topics discovered during the testing session.",
+            limit=5,
+            dry_run=False  # Explicitly set to False for compaction test
+        )
+
+        assert result["status"] == "compacted"
+        assert "summary_id" in result
+        assert result["compacted_count"] == 5
+        assert result["category"] == "learning"
+
+    @pytest.mark.asyncio
+    async def test_compact_rejects_short_summary(self, memory_manager, memories_to_compact):
+        """Summary must be at least 50 characters."""
+        result = await memory_manager.compact_memories(
+            summary="Too short",
+            limit=5,
+            dry_run=False
+        )
+
+        assert "error" in result
+        assert "50 characters" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_compact_rejects_zero_limit(self, memory_manager):
+        """Limit must be greater than 0."""
+        result = await memory_manager.compact_memories(
+            summary="A" * 60,
+            limit=0
+        )
+
+        assert "error" in result
+        assert "greater than 0" in result["error"]
+
+    @pytest.mark.asyncio
+    async def test_compact_rejects_empty_summary(self, memory_manager):
+        """Empty summary is rejected."""
+        result = await memory_manager.compact_memories(
+            summary="   ",
+            limit=5
+        )
+
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_compact_skipped_when_no_candidates(self, memory_manager):
+        """Returns skipped status when no eligible memories exist."""
+        result = await memory_manager.compact_memories(
+            summary="A" * 60,
+            limit=10,
+            dry_run=False
+        )
+
+        assert result["status"] == "skipped"
+        assert result["reason"] == "no_candidates"
+
+    @pytest.mark.asyncio
+    async def test_compact_with_topic_filter(self, memory_manager):
+        """Topic filter narrows candidates."""
+        # Create memories with different topics
+        await memory_manager.remember(
+            category="learning",
+            content="Learning about authentication flows",
+            tags=["auth"],
+            project_path="/test"
+        )
+        await memory_manager.remember(
+            category="learning",
+            content="Learning about database optimization",
+            tags=["database"],
+            project_path="/test"
+        )
+
+        result = await memory_manager.compact_memories(
+            summary="Summary of authentication learnings covering various auth flows and patterns.",
+            limit=10,
+            topic="auth",
+            dry_run=True
+        )
+
+        assert result["status"] == "dry_run"
+        assert result["would_compact"] == 1
+        # Only auth memory should be included
+        assert all("auth" in str(c).lower() for c in result["candidates"])
+
+    @pytest.mark.asyncio
+    async def test_compact_topic_mismatch_returns_skipped(self, memory_manager, memories_to_compact):
+        """Topic that matches nothing returns skipped with topic_mismatch reason."""
+        result = await memory_manager.compact_memories(
+            summary="A" * 60,
+            limit=10,
+            topic="nonexistent-topic-xyz",
+            dry_run=False
+        )
+
+        assert result["status"] == "skipped"
+        assert result["reason"] == "topic_mismatch"
+
+    @pytest.mark.asyncio
+    async def test_compact_excludes_pending_decisions(self, memory_manager):
+        """Decisions without outcomes are excluded from compaction."""
+        # Create a decision WITHOUT outcome (pending)
+        pending = await memory_manager.remember(
+            category="decision",
+            content="Use Redis for caching - awaiting outcome",
+            project_path="/test"
+        )
+
+        # Create a decision WITH outcome (resolved)
+        resolved = await memory_manager.remember(
+            category="decision",
+            content="Use PostgreSQL for database - outcome recorded",
+            project_path="/test"
+        )
+        await memory_manager.record_outcome(
+            memory_id=resolved["id"],
+            outcome="Worked well for our use case",
+            worked=True
+        )
+
+        # Create a learning (always eligible)
+        learning = await memory_manager.remember(
+            category="learning",
+            content="Learned about connection pooling",
+            project_path="/test"
+        )
+
+        result = await memory_manager.compact_memories(
+            summary="Summary covering database decisions and connection pooling learnings in detail.",
+            limit=10,
+            dry_run=True
+        )
+
+        candidate_ids = result["candidate_ids"]
+
+        # Pending decision should NOT be in candidates
+        assert pending["id"] not in candidate_ids
+
+        # Resolved decision and learning should be in candidates
+        assert resolved["id"] in candidate_ids
+        assert learning["id"] in candidate_ids
+
+    @pytest.mark.asyncio
+    async def test_dry_run_does_not_modify_state(self, memory_manager, memories_to_compact):
+        """Dry run returns preview without modifying anything."""
+        original_ids = [m["id"] for m in memories_to_compact]
+
+        # Run dry_run
+        result = await memory_manager.compact_memories(
+            summary="Summary of learnings covering insights about various topics discovered during sessions.",
+            limit=5,
+            dry_run=True
+        )
+
+        assert result["status"] == "dry_run"
+        assert result["would_compact"] == 5
+
+        # Verify originals still appear in recall (not archived)
+        recall_result = await memory_manager.recall("topic insight session", limit=20)
+        found_ids = [m["id"] for m in recall_result.get("learnings", [])]
+
+        for orig_id in original_ids:
+            assert orig_id in found_ids, f"Memory {orig_id} should still be visible after dry_run"
+
+    @pytest.mark.asyncio
+    async def test_dry_run_is_default(self, memory_manager, memories_to_compact):
+        """Dry run is the default behavior."""
+        result = await memory_manager.compact_memories(
+            summary="Summary of learnings covering insights about various topics discovered during sessions.",
+            limit=5
+            # Note: dry_run not specified, should default to True
+        )
+
+        assert result["status"] == "dry_run"
