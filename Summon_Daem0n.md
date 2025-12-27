@@ -770,7 +770,7 @@ When `check_rules` returns guidance:
 
 ---
 
-## THE COMPLETE GRIMOIRE OF POWERS (19 Invocations)
+## THE COMPLETE GRIMOIRE OF POWERS (29 Invocations)
 
 **REMINDER:** ALL tools accept `project_path` as a parameter. Always pass the absolute path to your project root.
 
@@ -824,6 +824,18 @@ remember(
 )
 ```
 *"Daem0n, remember this..."*
+
+#### `remember_batch(memories, project_path)`
+**When**: Storing multiple memories efficiently (bootstrapping, bulk imports)
+**Returns**: Summary with created_count, error_count, ids list
+```
+remember_batch([
+    {"category": "pattern", "content": "Use TypeScript for all new code"},
+    {"category": "warning", "content": "Don't use var, use const/let"},
+    {"category": "decision", "content": "Chose React over Vue", "rationale": "Team expertise"}
+], project_path="/path/to/project")
+```
+*"Daem0n, remember all of these..."*
 
 #### `record_outcome(memory_id, outcome, worked, project_path)`
 **When**: After implementing and testing a decision
@@ -980,6 +992,86 @@ ingest_doc("https://stripe.com/docs/api/charges", "stripe", project_path="/path/
 ingest_doc("https://react.dev/reference/hooks", "react-hooks", project_path="/path/to/project")
 ```
 *"Daem0n, consume this external knowledge..."*
+
+### Memory Management
+
+#### `pin_memory(memory_id, pinned, project_path)`
+**When**: Marking important memories that should never be pruned
+**Returns**: Updated memory status
+```
+pin_memory(42, pinned=true, project_path="/path/to/project")   # Pin memory
+pin_memory(42, pinned=false, project_path="/path/to/project")  # Unpin memory
+```
+Pinned memories: never pruned, get relevance boost in recall, treated as permanent knowledge.
+*"Daem0n, preserve this memory eternally..."*
+
+#### `archive_memory(memory_id, archived, project_path)`
+**When**: Hiding memories from recall while preserving them for history
+**Returns**: Updated memory status
+```
+archive_memory(42, archived=true, project_path="/path/to/project")   # Archive
+archive_memory(42, archived=false, project_path="/path/to/project")  # Restore
+```
+Archived memories are hidden from recall but preserved for graph traversal and auditing.
+*"Daem0n, hide this memory from sight..."*
+
+### Maintenance Powers
+
+#### `rebuild_index(project_path)`
+**When**: Search results seem stale or after bulk database operations
+**Returns**: Statistics about the rebuild
+```
+rebuild_index(project_path="/path/to/project")
+```
+Rebuilds both memory TF-IDF/vector indexes and rule indexes.
+*"Daem0n, refresh your indexes..."*
+
+#### `export_data(project_path, include_vectors?)`
+**When**: Backing up, migrating, or sharing project knowledge
+**Returns**: JSON structure with all memories and rules
+```
+export_data(project_path="/path/to/project")
+export_data(project_path="/path/to/project", include_vectors=true)  # Include embeddings (large)
+```
+*"Daem0n, export your knowledge..."*
+
+#### `import_data(data, project_path, merge?)`
+**When**: Restoring from backup or importing shared knowledge
+**Returns**: Import statistics
+```
+import_data(exported_data, project_path="/path/to/project")
+import_data(exported_data, project_path="/path/to/project", merge=false)  # Replace all
+```
+*"Daem0n, consume this exported knowledge..."*
+
+#### `prune_memories(project_path, older_than_days?, categories?, min_recall_count?, protect_successful?, dry_run?)`
+**When**: Cleaning up old, low-value memories
+**Returns**: Pruning results or preview (dry_run=true)
+```
+prune_memories(project_path="/path/to/project")  # Preview (dry_run=true by default)
+prune_memories(project_path="/path/to/project", older_than_days=60, dry_run=false)  # Actually prune
+```
+Protected memories (never pruned): patterns, warnings, pinned, with outcomes, frequently accessed, successful decisions.
+*"Daem0n, cleanse your fading memories..."*
+
+#### `cleanup_memories(project_path, dry_run?, merge_duplicates?)`
+**When**: Finding and merging duplicate memories
+**Returns**: Duplicate analysis or merge results
+```
+cleanup_memories(project_path="/path/to/project")  # Preview duplicates
+cleanup_memories(project_path="/path/to/project", dry_run=false)  # Merge duplicates
+```
+Identifies duplicates by: same category + normalized content + file_path. Keeps newest, preserves outcomes.
+*"Daem0n, consolidate your scattered thoughts..."*
+
+#### `health(project_path)`
+**When**: Checking server status, debugging, monitoring
+**Returns**: Health status with version, statistics, configuration
+```
+health(project_path="/path/to/project")
+```
+Returns: status, version, memory/rule counts, vector availability, cached contexts.
+*"Daem0n, reveal your vital signs..."*
 
 ---
 
@@ -1142,4 +1234,4 @@ Migration happens automatically at first awakening. After migration completes, y
 
 ---
 
-*Grimoire of Daem0n v2.6.1: Eternal memory with semantic understanding, vector embeddings, graph memory (causal chains), knowledge consumption, refactor guidance, complete summoning rituals with wards, Windows Altar of HTTP with automatic Startup enrollment (fixed path resolution and PowerShell escaping), covenant integration, law generation, and the daem0nmcp-protocol skill.*
+*Grimoire of Daem0n v2.7.0: 29 tools for eternal memory with semantic understanding, vector embeddings, graph memory (causal chains), memory consolidation (compact_memories), knowledge consumption, refactor guidance, complete summoning rituals with wards, Windows Altar of HTTP with automatic Startup enrollment, pre-commit enforcement hooks, covenant integration, law generation, and the daem0nmcp-protocol skill.*

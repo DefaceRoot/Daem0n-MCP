@@ -125,18 +125,22 @@ Or use `start_daem0nmcp_server.bat`
 
 3. **Start Claude Code** (after server is running)
 
-## Core Tools (27 Total)
+## Core Tools (29 Total)
 
 ### Memory Tools
 
 | Tool | Purpose |
 |------|---------|
 | `remember` | Store a memory with conflict detection |
+| `remember_batch` | Store multiple memories efficiently in one transaction |
 | `recall` | Semantic memory retrieval by topic |
 | `recall_for_file` | Get memories linked to a specific file |
 | `search_memories` | Search across all memories |
 | `find_related` | Discover connected memories |
 | `record_outcome` | Track if a decision worked or failed |
+| `pin_memory` | Pin memories to prevent pruning and boost relevance |
+| `archive_memory` | Hide memories from recall while preserving history |
+| `compact_memories` | Consolidate old episodic memories into summaries |
 
 ### Rule Tools
 
@@ -154,6 +158,15 @@ Or use `start_daem0nmcp_server.bat`
 | `get_briefing` | Smart session start with git awareness |
 | `context_check` | Combined recall + rules in one call |
 
+### Graph Memory Tools
+
+| Tool | Purpose |
+|------|---------|
+| `link_memories` | Create causal relationships between memories |
+| `unlink_memories` | Remove relationships between memories |
+| `trace_chain` | Traverse memory graph (forward/backward) |
+| `get_graph` | Visualize memory relationships (JSON or Mermaid) |
+
 ### Utility Tools
 
 | Tool | Purpose |
@@ -161,6 +174,17 @@ Or use `start_daem0nmcp_server.bat`
 | `scan_todos` | Find TODO/FIXME/HACK comments |
 | `propose_refactor` | Get refactoring context for a file |
 | `ingest_doc` | Import external documentation |
+
+### Maintenance Tools
+
+| Tool | Purpose |
+|------|---------|
+| `rebuild_index` | Force rebuild TF-IDF and vector indexes |
+| `export_data` | Export all memories and rules as JSON |
+| `import_data` | Import memories and rules from JSON |
+| `prune_memories` | Remove old, low-value memories (with protection) |
+| `cleanup_memories` | Find and merge duplicate memories |
+| `health` | Get server health, version, and statistics |
 
 ## Usage Examples
 
@@ -316,7 +340,7 @@ Environment variables (prefix: `DAEM0NMCP_`):
 
 ```
 daem0nmcp/
-├── server.py      # MCP server with 27 tools (FastMCP)
+├── server.py      # MCP server with 29 tools (FastMCP)
 ├── memory.py      # Memory storage & semantic retrieval
 ├── rules.py       # Rule engine with TF-IDF matching
 ├── similarity.py  # TF-IDF index, decay, conflict detection
