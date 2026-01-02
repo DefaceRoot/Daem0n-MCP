@@ -229,6 +229,29 @@ async def migrate_vectors_to_qdrant(db: DatabaseManager, qdrant: QdrantVectorSto
 
 **Goal:** Daem0n watches files and alerts before mistakes.
 
+### Research Findings: MCP Notifications
+
+MCP *does* support notifications in the protocol spec ([Architecture Docs](https://modelcontextprotocol.io/docs/concepts/architecture)):
+- Notification types: `notifications/tools/list_changed`, `notifications/resources/updated`
+- Transport: HTTP+SSE supports server push
+
+**However, there are significant limitations** ([GitHub Discussion #337](https://github.com/orgs/modelcontextprotocol/discussions/337)):
+- Claude Desktop **does not support resource subscriptions**
+- No standard way to inject notifications into LLM context as "tool-initiated" messages
+- "Very few servers pay attention to this" feature
+
+### Multi-Channel Notification Strategy
+
+Given the limitations, we implement a **priority-ordered multi-channel approach**:
+
+| Priority | Channel | Purpose | Reliability |
+|----------|---------|---------|-------------|
+| 1 | Git pre-commit hook | **Enforcement** - block bad commits | Most reliable |
+| 2 | System tray (plyer) | **Alert** - proactive warnings while coding | Good |
+| 3 | `.daem0n/alerts.json` | **Editor polling** - VSCode/Cursor can watch | Good |
+| 4 | MCP `notifications/` | **Future** - when clients support | Experimental |
+| 5 | Log file | **Audit trail** - last resort | Always works |
+
 ### New File: `daem0nmcp/watcher.py`
 
 ```python
@@ -236,10 +259,11 @@ async def migrate_vectors_to_qdrant(db: DatabaseManager, qdrant: QdrantVectorSto
 Proactive file watcher - detects pattern violations before they're committed.
 
 Notification channels (priority order):
-1. MCP notifications (if client supports)
-2. Editor extension API (VSCode, Cursor)
-3. System notifications (fallback)
-4. Log file (last resort)
+1. Git pre-commit hook (enforcement - blocking)
+2. System tray via plyer (alerting - non-blocking)
+3. .daem0n/alerts.json (editor polling)
+4. MCP notifications (future - when clients support)
+5. Log file (last resort)
 """
 
 import asyncio
@@ -388,7 +412,7 @@ class MCPNotificationChannel:
 # daem0nmcp/channels/system_notify.py
 
 class SystemNotificationChannel:
-    """Send system tray notifications."""
+    """Send system tray notifications via plyer."""
 
     async def send(self, notification: dict):
         try:
@@ -396,10 +420,44 @@ class SystemNotificationChannel:
             plyer_notify.notify(
                 title=f"Daem0n: {notification['level'].upper()}",
                 message=notification["message"],
-                app_name="Daem0n-MCP"
+                app_name="Daem0n-MCP",
+                timeout=10
             )
         except ImportError:
             pass  # plyer not installed
+
+
+# daem0nmcp/channels/editor_poll.py
+
+import json
+from pathlib import Path
+from datetime import datetime, timezone
+
+class EditorPollChannel:
+    """Write alerts to JSON file that editors can watch/poll."""
+
+    def __init__(self, alerts_path: str = ".daem0n/alerts.json"):
+        self.alerts_path = Path(alerts_path)
+        self.alerts_path.parent.mkdir(parents=True, exist_ok=True)
+
+    async def send(self, notification: dict):
+        # Load existing alerts
+        alerts = []
+        if self.alerts_path.exists():
+            try:
+                alerts = json.loads(self.alerts_path.read_text())
+            except json.JSONDecodeError:
+                alerts = []
+
+        # Add new alert with timestamp
+        notification["timestamp"] = datetime.now(timezone.utc).isoformat()
+        alerts.append(notification)
+
+        # Keep only last 50 alerts
+        alerts = alerts[-50:]
+
+        # Write back
+        self.alerts_path.write_text(json.dumps(alerts, indent=2))
 
 
 # daem0nmcp/channels/log_notify.py
@@ -407,11 +465,12 @@ class SystemNotificationChannel:
 import logging
 
 class LogNotificationChannel:
-    """Log notifications to file (last resort)."""
+    """Log notifications to file (audit trail)."""
 
     def __init__(self, log_path: str = ".daem0n/notifications.log"):
         self.logger = logging.getLogger("daem0n.notifications")
         handler = logging.FileHandler(log_path)
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
         self.logger.addHandler(handler)
 
     async def send(self, notification: dict):
@@ -424,9 +483,10 @@ class LogNotificationChannel:
 |------|-------|-------|
 | Create watcher daemon | `daem0nmcp/watcher.py` | New file |
 | Define notification protocol | `daem0nmcp/channels/__init__.py` | Abstract base |
-| MCP notification channel | `daem0nmcp/channels/mcp_notify.py` | If client supports |
-| System notification channel | `daem0nmcp/channels/system_notify.py` | Fallback |
-| Log file channel | `daem0nmcp/channels/log_notify.py` | Last resort |
+| MCP notification channel | `daem0nmcp/channels/mcp_notify.py` | Future - when clients support |
+| System notification channel | `daem0nmcp/channels/system_notify.py` | Primary alert channel |
+| Editor poll channel | `daem0nmcp/channels/editor_poll.py` | `.daem0n/alerts.json` |
+| Log file channel | `daem0nmcp/channels/log_notify.py` | Audit trail |
 | Enhance git hook integration | `daem0nmcp/hooks.py` | Pre-commit checks |
 | Add CLI command to start watcher | `daem0nmcp/cli.py` | `daem0n watch` |
 | Add watcher config | `daem0nmcp/config.py` | Patterns, debounce, channels |
@@ -446,6 +506,30 @@ daem0n hook check               # Manual pre-commit check
 ## Phase 2: Code Understanding
 
 **Goal:** Daem0n understands project structure and can answer "what depends on X?"
+
+### Research Findings: Multi-Language Parsing
+
+For parsing multiple languages, we use [`tree-sitter-languages`](https://pypi.org/project/tree-sitter-languages/) which provides pre-compiled wheels for 50+ languages:
+
+```python
+from tree_sitter_languages import get_parser
+
+# Works for any supported language - no compilation needed
+py_parser = get_parser('python')
+ts_parser = get_parser('typescript')
+js_parser = get_parser('javascript')
+go_parser = get_parser('go')
+rust_parser = get_parser('rust')
+```
+
+**Why tree-sitter over built-in AST:**
+- Python's `ast` module only works for Python
+- Tree-sitter provides consistent API across all languages
+- Incremental parsing (fast re-parse on edits)
+- Error-tolerant (parses incomplete/broken code)
+
+**Supported languages (subset):**
+Python, TypeScript, JavaScript, Go, Rust, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin, and 40+ more.
 
 ### New Models
 
@@ -505,57 +589,123 @@ class MemoryCodeRef(Base):
 ```python
 # daem0nmcp/code_indexer.py
 
-import ast
 import hashlib
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
+from tree_sitter_languages import get_parser, get_language
 
-class PythonIndexer:
-    """Extract entities from Python files using AST."""
+# Language configuration
+LANGUAGE_CONFIG = {
+    '.py': 'python',
+    '.js': 'javascript',
+    '.ts': 'typescript',
+    '.tsx': 'tsx',
+    '.go': 'go',
+    '.rs': 'rust',
+    '.java': 'java',
+    '.rb': 'ruby',
+    '.php': 'php',
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.cs': 'c_sharp',
+}
+
+# Tree-sitter queries for extracting entities (language-specific)
+ENTITY_QUERIES = {
+    'python': """
+        (class_definition name: (identifier) @class.name) @class.def
+        (function_definition name: (identifier) @function.name) @function.def
+    """,
+    'typescript': """
+        (class_declaration name: (type_identifier) @class.name) @class.def
+        (function_declaration name: (identifier) @function.name) @function.def
+        (method_definition name: (property_identifier) @method.name) @method.def
+        (arrow_function) @arrow.def
+    """,
+    'javascript': """
+        (class_declaration name: (identifier) @class.name) @class.def
+        (function_declaration name: (identifier) @function.name) @function.def
+        (method_definition name: (property_identifier) @method.name) @method.def
+    """,
+    'go': """
+        (type_declaration (type_spec name: (type_identifier) @class.name)) @class.def
+        (function_declaration name: (identifier) @function.name) @function.def
+        (method_declaration name: (field_identifier) @method.name) @method.def
+    """,
+    'rust': """
+        (struct_item name: (type_identifier) @class.name) @class.def
+        (impl_item) @impl.def
+        (function_item name: (identifier) @function.name) @function.def
+    """,
+}
+
+
+class TreeSitterIndexer:
+    """Universal code indexer using tree-sitter."""
+
+    def __init__(self):
+        self._parsers = {}
+        self._languages = {}
+
+    def get_parser(self, lang: str):
+        if lang not in self._parsers:
+            self._parsers[lang] = get_parser(lang)
+            self._languages[lang] = get_language(lang)
+        return self._parsers[lang], self._languages[lang]
 
     def index_file(self, file_path: Path, project_path: Path) -> Generator:
+        suffix = file_path.suffix
+        if suffix not in LANGUAGE_CONFIG:
+            return
+
+        lang = LANGUAGE_CONFIG[suffix]
+
         try:
-            source = file_path.read_text()
-            tree = ast.parse(source)
-        except (SyntaxError, UnicodeDecodeError):
+            source = file_path.read_bytes()
+            parser, language = self.get_parser(lang)
+            tree = parser.parse(source)
+        except Exception:
             return
 
         relative_path = file_path.relative_to(project_path)
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                yield self._make_entity(
-                    project_path=str(project_path),
-                    entity_type="class",
-                    name=node.name,
-                    file_path=str(relative_path),
-                    line_start=node.lineno,
-                    line_end=node.end_lineno,
-                    signature=f"class {node.name}",
-                    docstring=ast.get_docstring(node)
-                )
+        # Extract entities using tree-sitter queries
+        for entity in self._extract_entities(tree, language, lang, source):
+            entity['project_path'] = str(project_path)
+            entity['file_path'] = str(relative_path)
+            yield self._make_entity(**entity)
 
-            elif isinstance(node, ast.FunctionDef):
-                yield self._make_entity(
-                    project_path=str(project_path),
-                    entity_type="function",
-                    name=node.name,
-                    file_path=str(relative_path),
-                    line_start=node.lineno,
-                    line_end=node.end_lineno,
-                    signature=self._get_function_signature(node),
-                    docstring=ast.get_docstring(node)
-                )
+    def _extract_entities(self, tree, language, lang: str, source: bytes) -> Generator:
+        """Extract entities using language-specific queries."""
+        query_text = ENTITY_QUERIES.get(lang)
+        if not query_text:
+            # Fallback: walk tree manually for basic extraction
+            yield from self._walk_tree(tree.root_node, source)
+            return
+
+        query = language.query(query_text)
+        captures = query.captures(tree.root_node)
+
+        for node, capture_name in captures:
+            if capture_name.endswith('.def'):
+                entity_type = capture_name.split('.')[0]
+                name_node = self._find_name_node(node, captures, capture_name)
+                name = name_node.text.decode() if name_node else "anonymous"
+
+                yield {
+                    'entity_type': entity_type,
+                    'name': name,
+                    'line_start': node.start_point[0] + 1,
+                    'line_end': node.end_point[0] + 1,
+                    'signature': source[node.start_byte:min(node.start_byte + 200, node.end_byte)].decode(errors='ignore').split('\n')[0],
+                    'docstring': self._extract_docstring(node, source),
+                }
 
     def _make_entity(self, **kwargs):
         from daem0nmcp.models import CodeEntity
         id_string = f"{kwargs['project_path']}:{kwargs['file_path']}:{kwargs['name']}:{kwargs['entity_type']}"
         entity_id = hashlib.sha256(id_string.encode()).hexdigest()[:16]
         return CodeEntity(id=entity_id, **kwargs)
-
-    def _get_function_signature(self, node: ast.FunctionDef) -> str:
-        args = [arg.arg for arg in node.args.args]
-        return f"def {node.name}({', '.join(args)})"
 
 
 class CodeIndexManager:
@@ -564,7 +714,14 @@ class CodeIndexManager:
     def __init__(self, db, qdrant):
         self.db = db
         self.qdrant = qdrant
-        self.indexers = {'.py': PythonIndexer()}
+        self.indexer = TreeSitterIndexer()
+
+    # Default patterns for all supported languages
+    DEFAULT_PATTERNS = [
+        '**/*.py', '**/*.js', '**/*.ts', '**/*.tsx',
+        '**/*.go', '**/*.rs', '**/*.java', '**/*.rb',
+        '**/*.php', '**/*.c', '**/*.cpp', '**/*.cs',
+    ]
 
     async def index_project(self, project_path: str, patterns: list = None):
         """Full project index."""
@@ -573,7 +730,7 @@ class CodeIndexManager:
         from sqlalchemy import delete
 
         project = Path(project_path)
-        patterns = patterns or ['**/*.py']
+        patterns = patterns or self.DEFAULT_PATTERNS
 
         entities = []
 
@@ -582,10 +739,8 @@ class CodeIndexManager:
                 if self._should_skip(file_path):
                     continue
 
-                suffix = file_path.suffix
-                if suffix in self.indexers:
-                    for entity in self.indexers[suffix].index_file(file_path, project):
-                        entities.append(entity)
+                for entity in self.indexer.index_file(file_path, project):
+                    entities.append(entity)
 
         # Store in SQLite
         async with self.db.get_session() as session:
@@ -649,11 +804,13 @@ async def find_code(query: str, project_path: str = None) -> dict:
 | Add `CodeEntity` model | `daem0nmcp/models.py` | New table |
 | Add `MemoryCodeRef` model | `daem0nmcp/models.py` | Link table |
 | Create migration | `daem0nmcp/migrations/` | New tables |
-| Python AST indexer | `daem0nmcp/code_indexer.py` | New file |
+| Tree-sitter multi-lang indexer | `daem0nmcp/code_indexer.py` | New file, uses `tree-sitter-languages` |
+| Language-specific queries | `daem0nmcp/code_indexer.py` | Python, TS, JS, Go, Rust, Java, etc. |
 | Code index manager | `daem0nmcp/code_indexer.py` | Orchestrates indexing |
 | Auto-link symbols in `remember` | `daem0nmcp/memory.py` | Parse backticks |
 | Add `analyze_impact` tool | `daem0nmcp/server.py` | New MCP tool |
 | Add `index_project` tool | `daem0nmcp/server.py` | New MCP tool |
+| Add `find_code` tool | `daem0nmcp/server.py` | Semantic code search |
 | CLI for indexing | `daem0nmcp/cli.py` | `daem0n index` |
 | Tests | `tests/test_code_indexer.py` | New file |
 
@@ -847,12 +1004,124 @@ daem0nmcp/
 
 ---
 
-## Open Questions
+## Resolved Questions
 
-1. **MCP notification support** - Does Claude Code support `notifications/` methods? If not, what's the fallback?
-2. **Tree-sitter for JS/TS** - Should Phase 2 include TypeScript indexing, or defer?
-3. **Cloud sync** - Is git-based sync sufficient for initial release, or is cloud sync needed sooner?
-4. **GraphRAG** - When does AST-based indexing become insufficient? What triggers GraphRAG adoption?
+### Q1: MCP Notification Support
+
+**Answer:** MCP protocol supports notifications, but **Claude Desktop does not support resource subscriptions**.
+
+**Solution:** Multi-channel notification strategy:
+1. Git pre-commit hooks (enforcement - most reliable)
+2. System tray via `plyer` (alerting)
+3. `.daem0n/alerts.json` (editor polling)
+4. MCP notifications (future, when clients support)
+
+Sources: [MCP Architecture](https://modelcontextprotocol.io/docs/concepts/architecture), [GitHub Discussion #337](https://github.com/orgs/modelcontextprotocol/discussions/337)
+
+### Q2: Multi-Language Code Indexing
+
+**Answer:** Use [`tree-sitter-languages`](https://pypi.org/project/tree-sitter-languages/) - provides pre-compiled wheels for 50+ languages.
+
+**Solution:** Single `TreeSitterIndexer` class handles Python, TypeScript, JavaScript, Go, Rust, Java, and more with consistent API.
+
+### Q3: Team Sync Approach
+
+**Answer:** Git-based sync is sufficient. Cloud sync deferred to future.
+
+**Solution:** Export memories as YAML to shared git repo. Standard git workflow for sync.
+
+### Q4: GraphRAG Adoption
+
+**Answer:** Start with tree-sitter AST indexing. GraphRAG is overkill for initial release.
+
+**Trigger for GraphRAG:** When users need cross-file semantic reasoning that AST + embeddings can't provide (e.g., "find all code that handles user permissions" across a large monorepo).
+
+---
+
+## New Dependencies
+
+```toml
+# pyproject.toml additions
+
+[project]
+dependencies = [
+    # ... existing deps ...
+
+    # Phase 0: Vector storage
+    "qdrant-client>=1.7.0",
+
+    # Phase 1: File watching + notifications
+    "watchdog>=3.0.0",
+    "plyer>=2.1.0",
+
+    # Phase 2: Multi-language code parsing
+    "tree-sitter-languages>=1.10.0",
+]
+```
+
+---
+
+## Future Consideration: Local LLM Integration
+
+A small local LLM could act as a "preprocessing brain" that handles lightweight tasks without calling the main LLM:
+
+### Potential Use Cases
+
+| Task | Why Local LLM | Example |
+|------|---------------|---------|
+| **Change classification** | Fast triage of file changes | "Is this edit risky?" → yes/no |
+| **Warning summarization** | Condense multiple warnings | 5 warnings → 1 sentence summary |
+| **Query understanding** | Parse natural language locally | "What uses auth?" → structured query |
+| **Code summarization** | Describe code changes | diff → "Adds rate limiting to API" |
+| **Pattern matching** | Semantic similarity beyond embeddings | "Does this look like the failed approach?" |
+
+### Implementation Options
+
+```python
+# Option 1: Ollama (local, easy setup)
+from ollama import Client
+client = Client()
+response = client.generate(
+    model='phi3:mini',  # Small, fast
+    prompt=f"Is this code change risky? {diff}\nAnswer yes or no."
+)
+
+# Option 2: llama-cpp-python (no server needed)
+from llama_cpp import Llama
+llm = Llama(model_path="./models/phi-3-mini.gguf", n_ctx=2048)
+response = llm(prompt, max_tokens=50)
+
+# Option 3: transformers (if GPU available)
+from transformers import pipeline
+classifier = pipeline("text-classification", model="microsoft/phi-3-mini")
+```
+
+### When to Add This
+
+**Not in initial release.** The current plan uses:
+- Embeddings (sentence-transformers) for semantic similarity
+- TF-IDF for keyword matching
+- Rule-based logic for enforcement
+
+These cover most use cases. Add local LLM when:
+1. Classification accuracy with embeddings is insufficient
+2. Users want natural language summaries of warnings
+3. Query parsing becomes too rigid
+
+### Recommended Model
+
+| Model | Size | Speed | Quality | Use Case |
+|-------|------|-------|---------|----------|
+| Phi-3 Mini | 3.8B | Fast | Good | Classification, yes/no |
+| Qwen2.5-1.5B | 1.5B | Very fast | Decent | Quick triage |
+| Llama 3.2 3B | 3B | Fast | Good | Summaries |
+
+**Dependency (if added):**
+```toml
+# Optional - only if local LLM feature enabled
+"ollama>=0.1.0",  # or
+"llama-cpp-python>=0.2.0",
+```
 
 ---
 
