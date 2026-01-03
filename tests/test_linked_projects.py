@@ -414,3 +414,178 @@ class TestLinkedProjectsE2E:
         # 7. VERIFY UNLINKED
         links2 = await server.list_linked_projects(project_path=str(backend_path))
         assert len(links2["links"]) == 0
+
+
+class TestDatabaseConsolidation:
+    """Test merging child repo databases into parent."""
+
+    @pytest.mark.asyncio
+    async def test_consolidate_linked_databases(self, tmp_path):
+        """Should merge memories from child repos into parent."""
+        from daem0nmcp.database import DatabaseManager
+        from daem0nmcp.memory import MemoryManager
+        from daem0nmcp.links import LinkManager
+
+        # Setup parent and two child repos
+        parent_path = tmp_path / "project"
+        backend_path = tmp_path / "project" / "backend"
+        client_path = tmp_path / "project" / "client"
+
+        parent_path.mkdir()
+        backend_path.mkdir()
+        client_path.mkdir()
+
+        # Use CORRECT storage path: .daem0nmcp/storage
+        backend_db = DatabaseManager(str(backend_path / ".daem0nmcp" / "storage"))
+        client_db = DatabaseManager(str(client_path / ".daem0nmcp" / "storage"))
+        await backend_db.init_db()
+        await client_db.init_db()
+
+        backend_mem = MemoryManager(backend_db)
+        client_mem = MemoryManager(client_db)
+
+        await backend_mem.remember(
+            category="decision",
+            content="Use PostgreSQL",
+            project_path=str(backend_path)
+        )
+        await client_mem.remember(
+            category="warning",
+            content="Don't use localStorage for tokens",
+            project_path=str(client_path)
+        )
+
+        # Initialize parent database
+        parent_db = DatabaseManager(str(parent_path / ".daem0nmcp" / "storage"))
+        await parent_db.init_db()
+
+        # Link children to parent
+        parent_links = LinkManager(parent_db)
+        await parent_links.link_projects(str(parent_path), str(backend_path), "same-project")
+        await parent_links.link_projects(str(parent_path), str(client_path), "same-project")
+
+        # CONSOLIDATE - merge child DBs into parent
+        result = await parent_links.consolidate_linked_databases(
+            target_path=str(parent_path),
+            archive_sources=False  # Don't archive in test
+        )
+
+        assert result["status"] == "consolidated"
+        assert result["memories_merged"] >= 2
+
+        # Verify memories are now in parent
+        parent_mem = MemoryManager(parent_db)
+        stats = await parent_mem.get_statistics()
+        assert stats["total_memories"] >= 2
+
+    @pytest.mark.asyncio
+    async def test_consolidate_no_links_returns_status(self, tmp_path):
+        """Should return no_links status when no projects are linked."""
+        from daem0nmcp.database import DatabaseManager
+        from daem0nmcp.links import LinkManager
+
+        parent_path = tmp_path / "project"
+        parent_path.mkdir()
+
+        parent_db = DatabaseManager(str(parent_path / ".daem0nmcp" / "storage"))
+        await parent_db.init_db()
+
+        parent_links = LinkManager(parent_db)
+        result = await parent_links.consolidate_linked_databases(
+            target_path=str(parent_path)
+        )
+
+        assert result["status"] == "no_links"
+
+    @pytest.mark.asyncio
+    async def test_consolidate_tracks_merged_from_source(self, tmp_path):
+        """Merged memories should have _merged_from in context."""
+        from daem0nmcp.database import DatabaseManager
+        from daem0nmcp.memory import MemoryManager
+        from daem0nmcp.links import LinkManager
+        from daem0nmcp.models import Memory
+        from sqlalchemy import select
+
+        # Setup parent and child
+        parent_path = tmp_path / "project"
+        child_path = tmp_path / "project" / "child"
+        parent_path.mkdir()
+        child_path.mkdir()
+
+        child_db = DatabaseManager(str(child_path / ".daem0nmcp" / "storage"))
+        await child_db.init_db()
+        child_mem = MemoryManager(child_db)
+        await child_mem.remember(
+            category="pattern",
+            content="Always use async/await",
+            project_path=str(child_path)
+        )
+
+        parent_db = DatabaseManager(str(parent_path / ".daem0nmcp" / "storage"))
+        await parent_db.init_db()
+
+        parent_links = LinkManager(parent_db)
+        await parent_links.link_projects(str(parent_path), str(child_path), "same-project")
+
+        await parent_links.consolidate_linked_databases(
+            target_path=str(parent_path),
+            archive_sources=False
+        )
+
+        # Check that merged memory has _merged_from in context
+        async with parent_db.get_session() as session:
+            result = await session.execute(select(Memory))
+            memories = result.scalars().all()
+
+            assert len(memories) >= 1
+            merged_mem = [m for m in memories if "async/await" in m.content][0]
+            assert merged_mem.context is not None
+            assert "_merged_from" in merged_mem.context
+            assert merged_mem.context["_merged_from"] == str(child_path)
+
+    @pytest.mark.asyncio
+    async def test_consolidate_linked_databases_tool(self, tmp_path):
+        """Test the MCP tool for consolidating databases."""
+        from daem0nmcp.database import DatabaseManager
+        from daem0nmcp.memory import MemoryManager
+        from daem0nmcp import server
+
+        server._project_contexts.clear()
+
+        # Setup parent and child
+        parent_path = tmp_path / "project"
+        child_path = tmp_path / "project" / "child"
+        parent_path.mkdir()
+        child_path.mkdir()
+
+        # Create child with memories
+        child_db = DatabaseManager(str(child_path / ".daem0nmcp" / "storage"))
+        await child_db.init_db()
+        child_mem = MemoryManager(child_db)
+        await child_mem.remember(
+            category="decision",
+            content="Use Redis for caching",
+            project_path=str(child_path)
+        )
+
+        # Initialize parent
+        parent_db = DatabaseManager(str(parent_path / ".daem0nmcp" / "storage"))
+        await parent_db.init_db()
+
+        # Communion and link
+        await server.get_briefing(project_path=str(parent_path))
+        await server.link_projects(
+            linked_path=str(child_path),
+            relationship="same-project",
+            project_path=str(parent_path)
+        )
+
+        # Consolidate via MCP tool
+        result = await server.consolidate_linked_databases(
+            archive_sources=False,
+            project_path=str(parent_path)
+        )
+
+        assert result["status"] == "consolidated"
+        assert result["memories_merged"] == 1
+        assert str(child_path) in result["sources_processed"]

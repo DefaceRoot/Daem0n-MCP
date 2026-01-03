@@ -186,3 +186,92 @@ class LinkManager:
                     logger.warning(f"Could not open linked project {linked_path}: {e}")
 
         return managers
+
+    async def consolidate_linked_databases(
+        self,
+        target_path: str,
+        archive_sources: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Merge memories from all linked project databases into the target.
+
+        This is useful when consolidating multiple child repos into a parent,
+        or when switching from a multi-repo to a monorepo setup.
+
+        Storage path pattern: .daem0nmcp/storage
+
+        Args:
+            target_path: The target project path (where memories will be merged to)
+            archive_sources: If True, rename source .daem0nmcp dirs to .daem0nmcp.archived
+
+        Returns:
+            Dict with status, memories_merged count, and sources_processed list
+        """
+        from pathlib import Path
+        from .memory import MemoryManager
+        from .models import Memory
+
+        links = await self.list_linked_projects(target_path)
+        if not links:
+            return {"status": "no_links", "message": "No linked projects to consolidate"}
+
+        target_mem = MemoryManager(self.db)
+        memories_merged = 0
+        sources_processed = []
+
+        for link in links:
+            source_path = link["linked_path"]
+            # Use CORRECT storage path pattern: .daem0nmcp/storage
+            source_storage = Path(source_path) / ".daem0nmcp" / "storage"
+
+            if not source_storage.exists():
+                logger.warning(f"No storage found at {source_storage}, skipping")
+                continue
+
+            try:
+                from .database import DatabaseManager
+                source_db = DatabaseManager(str(source_storage))
+                await source_db.init_db()
+
+                # Copy memories from source
+                async with source_db.get_session() as session:
+                    result = await session.execute(select(Memory))
+                    source_memories = result.scalars().all()
+
+                    for mem in source_memories:
+                        # Add with source tracking in context
+                        context = dict(mem.context) if mem.context else {}
+                        context["_merged_from"] = source_path
+                        context["_original_id"] = mem.id
+
+                        await target_mem.remember(
+                            category=mem.category,
+                            content=mem.content,
+                            rationale=mem.rationale,
+                            context=context,
+                            tags=list(mem.tags) if mem.tags else [],
+                            file_path=mem.file_path,
+                            project_path=target_path
+                        )
+                        memories_merged += 1
+
+                sources_processed.append(source_path)
+                logger.info(f"Merged {len(source_memories)} memories from {source_path}")
+
+                # Archive source if requested
+                if archive_sources:
+                    daem0nmcp_dir = Path(source_path) / ".daem0nmcp"
+                    archived_path = daem0nmcp_dir.parent / ".daem0nmcp.archived"
+                    if daem0nmcp_dir.exists() and not archived_path.exists():
+                        daem0nmcp_dir.rename(archived_path)
+                        logger.info(f"Archived {daem0nmcp_dir} -> {archived_path}")
+
+            except Exception as e:
+                logger.error(f"Error consolidating from {source_path}: {e}")
+
+        return {
+            "status": "consolidated",
+            "memories_merged": memories_merged,
+            "sources_processed": sources_processed,
+            "archived": archive_sources
+        }

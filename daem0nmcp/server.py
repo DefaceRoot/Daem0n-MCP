@@ -4005,6 +4005,54 @@ async def list_linked_projects(
     return {"links": links}
 
 
+@mcp.tool()
+@with_request_id
+@requires_communion
+async def consolidate_linked_databases(
+    archive_sources: bool = False,
+    project_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Merge memories from all linked project databases into this one.
+
+    Use this when consolidating multiple child repos into a parent project,
+    or when transitioning from a multi-repo to a monorepo setup.
+
+    All merged memories will have _merged_from in their context, preserving
+    the original source project path for traceability.
+
+    Args:
+        archive_sources: If True, rename source .daem0nmcp dirs to .daem0nmcp.archived
+        project_path: Current project root path (target for consolidation)
+
+    Returns:
+        Dict with:
+        - status: "consolidated" or "no_links"
+        - memories_merged: Number of memories copied
+        - sources_processed: List of source project paths
+        - archived: Whether sources were archived
+
+    Examples:
+        consolidate_linked_databases()  # Merge all linked project DBs
+        consolidate_linked_databases(archive_sources=True)  # Merge and archive sources
+    """
+    if not project_path and not _default_project_path:
+        return _missing_project_path_error()
+
+    ctx = await get_project_context(project_path)
+
+    try:
+        from .links import LinkManager
+    except ImportError:
+        from daem0nmcp.links import LinkManager
+
+    link_mgr = LinkManager(ctx.db_manager)
+    return await link_mgr.consolidate_linked_databases(
+        target_path=ctx.project_path,
+        archive_sources=archive_sources
+    )
+
+
 # ============================================================================
 # MCP RESOURCES - Automatic Context Injection
 # ============================================================================
