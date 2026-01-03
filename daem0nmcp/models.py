@@ -279,3 +279,36 @@ class MemoryCodeRef(Base):
 
     # ORM relationship
     memory = orm_relationship("Memory", backref="code_refs")
+
+
+class ProjectLink(Base):
+    """
+    Links between related projects for cross-repo awareness.
+
+    Enables reading memories from linked projects while maintaining
+    strict write isolation (each project writes only to its own DB).
+
+    Relationship types:
+    - same-project: Full sharing (e.g., client/server monorepo split)
+    - upstream: Dependency (your app depends on this library)
+    - downstream: Dependent (this app depends on your library)
+    - related: Loose association
+    """
+    __tablename__ = "project_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # This project's path (where this link record is stored)
+    source_path = Column(String, nullable=False, index=True)
+
+    # The linked project's path
+    linked_path = Column(String, nullable=False)
+
+    # Type of relationship
+    relationship = Column(String, default="related")  # same-project, upstream, downstream, related
+
+    # Optional label/description
+    label = Column(String, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
