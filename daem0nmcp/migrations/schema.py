@@ -196,6 +196,20 @@ MIGRATIONS: List[Tuple[int, str, List[str]]] = [
         "CREATE INDEX IF NOT EXISTS idx_memory_code_refs_memory ON memory_code_refs(memory_id);",
         "CREATE INDEX IF NOT EXISTS idx_memory_code_refs_entity ON memory_code_refs(code_entity_id);",
     ]),
+    (10, "Add project_links table for cross-repo awareness", [
+        """
+        CREATE TABLE IF NOT EXISTS project_links (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_path TEXT NOT NULL,
+            linked_path TEXT NOT NULL,
+            relationship TEXT DEFAULT 'related',
+            label TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """,
+        "CREATE INDEX IF NOT EXISTS idx_project_links_source ON project_links(source_path);",
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_project_links_unique ON project_links(source_path, linked_path);"
+    ]),
 ]
 
 
