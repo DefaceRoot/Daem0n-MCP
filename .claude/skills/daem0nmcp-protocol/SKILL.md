@@ -127,6 +127,36 @@ mcp__daem0nmcp__record_outcome(
 | "The warning doesn't apply" | Warnings exist because someone failed before |
 | "I don't need to record failures" | Failures are the most valuable memories |
 
+## Enforcement (2026 Update)
+
+The Sacred Covenant is now ENFORCED, not advisory:
+
+### What Happens If You Skip Steps
+
+1. **Skip get_briefing()**: ALL tools return `COMMUNION_REQUIRED` block
+2. **Skip context_check()**: Mutating tools return `COUNSEL_REQUIRED` block
+3. **Each block includes a `remedy`**: The exact tool call to fix it
+
+### Enforcement Decorators
+
+Tools are classified:
+- **@requires_counsel**: remember, remember_batch, add_rule, update_rule, prune_memories, cleanup_memories, compact_memories, export_data, import_data, ingest_doc
+- **@requires_communion**: All other tools except get_briefing and health
+- **Exempt**: get_briefing, health
+
+### Preflight Token
+
+After `context_check()`, you receive a `preflight_token` in the response.
+This is cryptographic proof you consulted the Daem0n.
+Token is valid for 5 minutes.
+
+### Parallel Preflight
+
+Before file edits, use the parallel-preflight skill to run:
+- context_check + recall_for_file + analyze_impact
+
+IN PARALLEL for maximum efficiency.
+
 ## Workflow Summary
 
 ```
