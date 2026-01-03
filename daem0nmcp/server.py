@@ -3822,6 +3822,233 @@ async def analyze_impact(
 
 
 # ============================================================================
+# MCP RESOURCES - Automatic Context Injection
+# ============================================================================
+# These resources are automatically injected into the context window
+# by MCP clients that support resource subscriptions.
+# The _*_resource_impl functions are the testable implementations,
+# while the @mcp.resource decorated functions are the MCP protocol wrappers.
+
+async def _warnings_resource_impl(project_path: str, db_manager: DatabaseManager) -> str:
+    """
+    Implementation: Get active warnings for a project.
+
+    Args:
+        project_path: Path to the project root
+        db_manager: Database manager to query
+
+    Returns:
+        Formatted markdown string of active warnings
+    """
+    try:
+        async with db_manager.get_session() as session:
+            result = await session.execute(
+                select(Memory).where(
+                    Memory.category == "warning",
+                    or_(Memory.archived == False, Memory.archived.is_(None)),
+                ).order_by(Memory.created_at.desc()).limit(10)
+            )
+            warnings = result.scalars().all()
+
+        if not warnings:
+            return "No active warnings for this project."
+
+        lines = ["# Active Warnings", ""]
+        for w in warnings:
+            lines.append(f"- {w.content}")
+            if w.rationale:
+                lines.append(f"  Reason: {w.rationale}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"Error fetching warnings resource: {e}")
+        return f"Error: {e}"
+
+
+async def _failed_resource_impl(project_path: str, db_manager: DatabaseManager) -> str:
+    """
+    Implementation: Get failed approaches to avoid repeating.
+
+    These are decisions where worked=False.
+
+    Args:
+        project_path: Path to the project root
+        db_manager: Database manager to query
+
+    Returns:
+        Formatted markdown string of failed approaches
+    """
+    try:
+        async with db_manager.get_session() as session:
+            result = await session.execute(
+                select(Memory).where(
+                    Memory.worked == False,
+                    or_(Memory.archived == False, Memory.archived.is_(None)),
+                ).order_by(Memory.created_at.desc()).limit(10)
+            )
+            failed = result.scalars().all()
+
+        if not failed:
+            return "No failed approaches recorded."
+
+        lines = ["# Failed Approaches (Do Not Repeat)", ""]
+        for f in failed:
+            lines.append(f"- {f.content}")
+            if f.outcome:
+                lines.append(f"  Outcome: {f.outcome}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"Error fetching failed resource: {e}")
+        return f"Error: {e}"
+
+
+async def _rules_resource_impl(project_path: str, db_manager: DatabaseManager) -> str:
+    """
+    Implementation: Get high-priority rules for a project.
+
+    Returns top 5 rules by priority.
+
+    Args:
+        project_path: Path to the project root
+        db_manager: Database manager to query
+
+    Returns:
+        Formatted markdown string of rules
+    """
+    try:
+        async with db_manager.get_session() as session:
+            result = await session.execute(
+                select(Rule).where(Rule.enabled == True)
+                .order_by(Rule.priority.desc())
+                .limit(5)
+            )
+            rules = result.scalars().all()
+
+        if not rules:
+            return "No rules defined for this project."
+
+        lines = ["# Project Rules", ""]
+        for r in rules:
+            lines.append(f"## {r.trigger}")
+            if r.must_do:
+                lines.append("Must do:")
+                for item in r.must_do:
+                    lines.append(f"  - {item}")
+            if r.must_not:
+                lines.append("Must NOT:")
+                for item in r.must_not:
+                    lines.append(f"  - {item}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.error(f"Error fetching rules resource: {e}")
+        return f"Error: {e}"
+
+
+async def _context_resource_impl(project_path: str, db_manager: DatabaseManager) -> str:
+    """
+    Implementation: Get combined project context.
+
+    Combines warnings, failed approaches, and rules into one context document.
+
+    Args:
+        project_path: Path to the project root
+        db_manager: Database manager to query
+
+    Returns:
+        Formatted markdown string with all context sections
+    """
+    try:
+        warnings = await _warnings_resource_impl(project_path, db_manager)
+        failed = await _failed_resource_impl(project_path, db_manager)
+        rules = await _rules_resource_impl(project_path, db_manager)
+
+        return f"""# Daem0n Project Context
+
+{warnings}
+
+---
+
+{failed}
+
+---
+
+{rules}
+"""
+
+    except Exception as e:
+        logger.error(f"Error fetching context resource: {e}")
+        return f"Error: {e}"
+
+
+@mcp.resource("daem0n://warnings/{project_path}")
+async def warnings_resource(project_path: str) -> str:
+    """
+    Active warnings for this project.
+
+    Automatically injected - no tool call needed.
+    MCP clients subscribing to this resource get automatic updates.
+    """
+    try:
+        ctx = await get_project_context(project_path)
+        return await _warnings_resource_impl(project_path, ctx.db_manager)
+    except Exception as e:
+        logger.error(f"Error in warnings_resource: {e}")
+        return f"Error: {e}"
+
+
+@mcp.resource("daem0n://failed/{project_path}")
+async def failed_resource(project_path: str) -> str:
+    """
+    Failed approaches to avoid repeating.
+
+    These are decisions where worked=False.
+    """
+    try:
+        ctx = await get_project_context(project_path)
+        return await _failed_resource_impl(project_path, ctx.db_manager)
+    except Exception as e:
+        logger.error(f"Error in failed_resource: {e}")
+        return f"Error: {e}"
+
+
+@mcp.resource("daem0n://rules/{project_path}")
+async def rules_resource(project_path: str) -> str:
+    """
+    High-priority rules for this project.
+
+    Top 5 rules by priority.
+    """
+    try:
+        ctx = await get_project_context(project_path)
+        return await _rules_resource_impl(project_path, ctx.db_manager)
+    except Exception as e:
+        logger.error(f"Error in rules_resource: {e}")
+        return f"Error: {e}"
+
+
+@mcp.resource("daem0n://context/{project_path}")
+async def context_resource(project_path: str) -> str:
+    """
+    Combined project context - warnings, failed approaches, and rules.
+
+    This is the main resource for automatic context injection.
+    Subscribe to this for complete project awareness.
+    """
+    try:
+        ctx = await get_project_context(project_path)
+        return await _context_resource_impl(project_path, ctx.db_manager)
+    except Exception as e:
+        logger.error(f"Error in context_resource: {e}")
+        return f"Error: {e}"
+
+
+# ============================================================================
 # Cleanup
 # ============================================================================
 async def _cleanup_all_contexts():
