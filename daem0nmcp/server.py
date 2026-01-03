@@ -2034,6 +2034,16 @@ async def context_check(
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
+    # Issue preflight token as proof of consultation
+    from .covenant import PreflightToken
+    from .enforcement import get_session_id
+
+    token = PreflightToken.issue(
+        action=description,
+        session_id=get_session_id(ctx.project_path),
+        project_path=ctx.project_path,
+    )
+
     return {
         "description": description,
         "has_concerns": has_concerns,
@@ -2043,6 +2053,7 @@ async def context_check(
         "must_do": guidance.get('must_do', []) if guidance else [],
         "must_not": guidance.get('must_not', []) if guidance else [],
         "ask_first": guidance.get('ask_first', []) if guidance else [],
+        "preflight_token": token.serialize(),
         "message": (
             "⚠️ Review warnings before proceeding" if has_concerns else
             "✓ No concerns found, but always use good judgment"

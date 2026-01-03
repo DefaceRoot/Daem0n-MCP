@@ -185,3 +185,39 @@ class TestCovenantEnforcer:
         assert "remember_batch" in COUNSEL_REQUIRED_TOOLS
         assert "add_rule" in COUNSEL_REQUIRED_TOOLS
         assert "prune_memories" in COUNSEL_REQUIRED_TOOLS
+
+
+class TestPreflightTokenIntegration:
+    """Test preflight token in context_check response."""
+
+    @pytest.fixture
+    def db_manager(self, tmp_path):
+        from daem0nmcp.database import DatabaseManager
+        return DatabaseManager(str(tmp_path / "storage"))
+
+    @pytest.mark.asyncio
+    async def test_context_check_returns_preflight_token(self, db_manager):
+        """context_check should include a preflight_token."""
+        await db_manager.init_db()
+
+        from daem0nmcp import server
+        server._project_contexts.clear()
+
+        project_path = str(db_manager.storage_path.parent.parent)
+
+        # Briefing first
+        await server.get_briefing(project_path=project_path)
+
+        # context_check should return token
+        result = await server.context_check(
+            description="About to edit auth.py",
+            project_path=project_path,
+        )
+
+        assert "preflight_token" in result
+
+        # Verify token is valid
+        from daem0nmcp.covenant import PreflightToken
+        token = PreflightToken.verify(result["preflight_token"], project_path)
+        assert token is not None
+        assert token.action == "About to edit auth.py"
