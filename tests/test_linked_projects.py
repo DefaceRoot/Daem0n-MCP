@@ -316,3 +316,101 @@ class TestLinkedBriefing:
         # With correct storage path, we should see the warning we added
         assert linked["warning_count"] == 1
         assert linked["memory_count"] == 1
+
+
+class TestLinkedProjectsE2E:
+    """End-to-end test of the complete linked projects flow."""
+
+    @pytest.mark.asyncio
+    async def test_complete_linked_workflow(self, tmp_path):
+        """Test: link -> briefing -> recall -> unlink."""
+        from daem0nmcp.database import DatabaseManager
+        from daem0nmcp.memory import MemoryManager
+        from daem0nmcp import server
+
+        # Setup two project directories with CORRECT storage paths
+        backend_path = tmp_path / "backend"
+        client_path = tmp_path / "client"
+        backend_path.mkdir()
+        client_path.mkdir()
+
+        # Use correct storage path: .daem0nmcp/storage
+        backend_db = DatabaseManager(str(backend_path / ".daem0nmcp" / "storage"))
+        client_db = DatabaseManager(str(client_path / ".daem0nmcp" / "storage"))
+        await backend_db.init_db()
+        await client_db.init_db()
+
+        server._project_contexts.clear()
+
+        # Add memories to each project
+        backend_mem = MemoryManager(backend_db)
+        client_mem = MemoryManager(client_db)
+
+        await backend_mem.remember(
+            category="decision",
+            content="Use PostgreSQL for data persistence",
+            project_path=str(backend_path)
+        )
+
+        await client_mem.remember(
+            category="warning",
+            content="Never store tokens in localStorage",
+            project_path=str(client_path)
+        )
+
+        await client_mem.remember(
+            category="pattern",
+            content="Use HttpOnly cookies for auth",
+            project_path=str(client_path)
+        )
+
+        # 1. COMMUNION - get briefing
+        briefing = await server.get_briefing(project_path=str(backend_path))
+        assert briefing["status"] == "ready"
+        assert briefing["linked_projects"] == []  # No links yet
+
+        # 2. LINK PROJECTS
+        link_result = await server.link_projects(
+            linked_path=str(client_path),
+            relationship="same-project",
+            label="Frontend client",
+            project_path=str(backend_path)
+        )
+        assert link_result["status"] == "linked"
+
+        # 3. VERIFY BRIEFING SHOWS LINK
+        briefing2 = await server.get_briefing(project_path=str(backend_path))
+        assert len(briefing2["linked_projects"]) == 1
+        assert briefing2["linked_projects"][0]["path"] == str(client_path)
+        assert briefing2["linked_projects"][0]["warning_count"] == 1
+
+        # 4. RECALL WITH LINKED
+        await server.context_check(
+            description="checking auth patterns",
+            project_path=str(backend_path)
+        )
+
+        recall_result = await server.recall(
+            topic="auth tokens",
+            include_linked=True,
+            project_path=str(backend_path)
+        )
+
+        # Should find client's warning about localStorage
+        all_content = str(recall_result)
+        assert "localStorage" in all_content or "HttpOnly" in all_content
+
+        # 5. LIST LINKS
+        links = await server.list_linked_projects(project_path=str(backend_path))
+        assert len(links["links"]) == 1
+
+        # 6. UNLINK
+        unlink_result = await server.unlink_projects(
+            linked_path=str(client_path),
+            project_path=str(backend_path)
+        )
+        assert unlink_result["status"] == "unlinked"
+
+        # 7. VERIFY UNLINKED
+        links2 = await server.list_linked_projects(project_path=str(backend_path))
+        assert len(links2["links"]) == 0

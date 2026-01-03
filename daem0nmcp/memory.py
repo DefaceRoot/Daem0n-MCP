@@ -705,12 +705,12 @@ class MemoryManager:
         # Use hybrid search (TF-IDF + Qdrant vectors if available)
         search_results = self._hybrid_search(topic, top_k=limit * 4, tfidf_threshold=0.05)
 
-        if not search_results:
+        if not search_results and not include_linked:
             return {"memories": [], "message": "No relevant memories found", "topic": topic}
 
-        # Get full memory objects
-        memory_ids = [doc_id for doc_id, _ in search_results]
-        {doc_id: score for doc_id, score in search_results}
+        # Get full memory objects (may be empty if include_linked is True but no local results)
+        memory_ids = [doc_id for doc_id, _ in search_results] if search_results else []
+        {doc_id: score for doc_id, score in search_results} if search_results else {}
 
         async with self.db.get_session() as session:
             # Build query with date filters at database level for performance
@@ -774,7 +774,7 @@ class MemoryManager:
 
         # Score with decay and organize
         scored_memories = []
-        for mem_id, base_score in search_results:
+        for mem_id, base_score in (search_results or []):
             mem = memories.get(mem_id)
             if not mem:
                 continue

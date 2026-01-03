@@ -174,11 +174,12 @@ class LinkManager:
 
         for link in links:
             linked_path = link["linked_path"]
-            daem0n_dir = Path(linked_path) / ".daem0n"
+            # Use correct storage path pattern: .daem0nmcp/storage
+            storage_path = Path(linked_path) / ".daem0nmcp" / "storage"
 
-            if daem0n_dir.exists():
+            if storage_path.exists():
                 try:
-                    linked_db = DatabaseManager(str(daem0n_dir))
+                    linked_db = DatabaseManager(str(storage_path))
                     await linked_db.init_db()
                     managers.append((linked_path, linked_db))
                 except Exception as e:
