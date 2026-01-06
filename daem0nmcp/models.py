@@ -131,6 +131,51 @@ class Rule(Base):
 # The briefing now computes statistics dynamically which is more accurate.
 
 
+class MemoryVersion(Base):
+    """
+    Tracks historical versions of memories for temporal queries.
+
+    Captures snapshots when:
+    - Memory content changes
+    - Memory relationships change
+    - Memory outcome is recorded
+
+    Enables queries like:
+    - "What did we believe about auth at time T?"
+    - "How has this decision evolved?"
+    - "When did this relationship change?"
+    """
+    __tablename__ = "memory_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Reference to the memory being versioned
+    memory_id = Column(Integer, ForeignKey("memories.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Version sequence number (1, 2, 3...)
+    version_number = Column(Integer, nullable=False)
+
+    # Snapshot of memory state at this version
+    content = Column(Text, nullable=False)
+    rationale = Column(Text, nullable=True)
+    context = Column(JSON, default=dict)
+    tags = Column(JSON, default=list)
+
+    # Outcome state at this version
+    outcome = Column(Text, nullable=True)
+    worked = Column(Boolean, nullable=True)
+
+    # What triggered this version
+    change_type = Column(String, nullable=False)  # created, content_updated, outcome_recorded, relationship_changed
+    change_description = Column(Text, nullable=True)
+
+    # When this version was created
+    changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # ORM relationship
+    memory = orm_relationship("Memory", backref="versions")
+
+
 class MemoryRelationship(Base):
     """
     Explicit relationship edges between memories for graph traversal.
