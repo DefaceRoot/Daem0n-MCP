@@ -153,6 +153,24 @@ ENTITY_QUERIES = {
     """,
 }
 
+# Import extraction queries per language
+IMPORT_QUERIES = {
+    'python': """
+        (import_statement
+            name: (dotted_name) @import.name) @import.def
+        (import_from_statement
+            module_name: (dotted_name) @import.module) @import.def
+    """,
+    'typescript': """
+        (import_statement
+            source: (string) @import.source) @import.def
+    """,
+    'javascript': """
+        (import_statement
+            source: (string) @import.source) @import.def
+    """,
+}
+
 
 def _check_tree_sitter_available() -> bool:
     """Check if tree-sitter-language-pack is available."""
@@ -199,6 +217,34 @@ class TreeSitterIndexer:
 
         return self._parsers.get(lang), self._languages.get(lang)
 
+    def _extract_imports(self, tree, language, lang: str, source: bytes) -> List[str]:
+        """Extract import statements from a parsed file."""
+        import tree_sitter
+
+        query_text = IMPORT_QUERIES.get(lang)
+        if not query_text:
+            return []
+
+        try:
+            query = tree_sitter.Query(language, query_text)
+            cursor = tree_sitter.QueryCursor(query)
+            matches = list(cursor.matches(tree.root_node))
+        except Exception as e:
+            logger.debug(f"Import query failed for {lang}: {e}")
+            return []
+
+        imports = []
+        for pattern_index, captures_dict in matches:
+            for capture_name, nodes in captures_dict.items():
+                if capture_name in ('import.name', 'import.module', 'import.source'):
+                    for node in nodes:
+                        text = source[node.start_byte:node.end_byte].decode('utf-8', errors='replace')
+                        text = text.strip('"\'')
+                        if text and text not in imports:
+                            imports.append(text)
+
+        return imports
+
     def get_supported_extensions(self) -> List[str]:
         """Get list of supported file extensions."""
         return list(LANGUAGE_CONFIG.keys())
@@ -239,10 +285,14 @@ class TreeSitterIndexer:
             # File is not under project path
             relative_path = file_path
 
+        # Extract file-level imports
+        file_imports = self._extract_imports(tree, language, lang, source)
+
         # Extract entities using tree-sitter queries
         for entity in self._extract_entities(tree, language, lang, source, str(relative_path)):
             entity['project_path'] = str(project_path)
             entity['file_path'] = str(relative_path)
+            entity['imports'] = file_imports  # Attach imports to all entities
             yield self._make_entity_dict(**entity)
 
     def _extract_entities(
@@ -522,7 +572,7 @@ class TreeSitterIndexer:
             'docstring': kwargs.get('docstring'),
             'calls': [],
             'called_by': [],
-            'imports': [],
+            'imports': kwargs.get('imports', []),
             'inherits': [],
             'indexed_at': datetime.now(timezone.utc),
         }

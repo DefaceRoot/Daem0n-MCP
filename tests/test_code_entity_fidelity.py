@@ -95,3 +95,27 @@ class TestStableEntityIDs:
             matching = [e2 for e2 in entities2 if e2['name'] == e1['name'] and e2['entity_type'] == e1['entity_type']]
             assert len(matching) == 1, f"No match for {e1['name']}"
             assert matching[0]['id'] == e1['id'], f"ID changed for {e1['name']}"
+
+
+class TestImportExtraction:
+    """Test import extraction from AST."""
+
+    def test_python_imports_extracted(self, temp_project):
+        """Python imports should be extracted."""
+        from daem0nmcp.code_indexer import TreeSitterIndexer
+
+        indexer = TreeSitterIndexer()
+        if not indexer.available:
+            pytest.skip("tree-sitter not available")
+
+        py_file = temp_project / "app.py"
+        py_file.write_text('import os\nfrom pathlib import Path\ndef main(): pass')
+
+        entities = list(indexer.index_file(py_file, temp_project))
+
+        main_func = next((e for e in entities if e['name'] == 'main'), None)
+        assert main_func is not None
+
+        imports = main_func.get('imports', [])
+        assert len(imports) > 0, "No imports extracted"
+        assert 'os' in imports or any('os' in i for i in imports)
