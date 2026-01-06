@@ -13,6 +13,18 @@
 
 **AI Memory & Decision System** - Give AI agents persistent memory and consistent decision-making with *actual* semantic understanding.
 
+## What's New in v2.14.0
+
+### Active Working Context (MemGPT-style)
+Always-hot memory layer that keeps critical information front and center:
+- `set_active_context(memory_id)` - Pin critical memories to active context
+- `get_active_context()` - Get all hot memories for current focus
+- `remove_from_active_context(memory_id)` - Remove from hot context
+- `clear_active_context()` - Clear all hot memories
+- Auto-included in `get_briefing()` responses
+- Failed decisions auto-activate with high priority
+- Max 10 items to prevent context bloat
+
 ## What's New in v2.13.0
 
 - **Passive Capture (Auto-Remember)**: Memories without manual calls
@@ -188,7 +200,7 @@ Or use `start_daem0nmcp_server.bat`
 
 3. **Start Claude Code** (after server is running)
 
-## Core Tools (32 Total)
+## Core Tools (36 Total)
 
 ### Memory Tools
 
@@ -220,6 +232,10 @@ Or use `start_daem0nmcp_server.bat`
 |------|---------|
 | `get_briefing` | Smart session start with git awareness |
 | `context_check` | Combined recall + rules in one call |
+| `set_active_context` | Pin memory to active working context |
+| `get_active_context` | Get all hot memories for current focus |
+| `remove_from_active_context` | Remove memory from active context |
+| `clear_active_context` | Clear all hot memories |
 
 ### Graph Memory Tools
 
@@ -585,7 +601,7 @@ This parses your code with tree-sitter (supports Python, TypeScript, JavaScript,
 # Install in development mode
 pip install -e .
 
-# Run tests (355 tests)
+# Run tests (432 tests)
 pytest tests/ -v --asyncio-mode=auto
 
 # Run server directly
@@ -627,4 +643,4 @@ rm -rf .daem0nmcp/
                               ~ Daem0n
 ```
 
-*Daem0nMCP v2.13.0: Passive Capture—automatic memory capture without manual calls, plus all previous features.*
+*Daem0nMCP v2.14.0: Active Working Context—MemGPT-style hot memory layer, plus all previous features.*
