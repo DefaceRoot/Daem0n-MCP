@@ -1752,6 +1752,29 @@ class MemoryManager:
             session.add(rel)
             await session.flush()  # Get the ID
 
+            # Create versions for both memories to track relationship change
+            for mem_id, direction in [(source_id, "outgoing"), (target_id, "incoming")]:
+                result = await session.execute(
+                    select(func.max(MemoryVersion.version_number))
+                    .where(MemoryVersion.memory_id == mem_id)
+                )
+                current_max = result.scalar() or 0
+
+                mem = await session.get(Memory, mem_id)
+                version = MemoryVersion(
+                    memory_id=mem_id,
+                    version_number=current_max + 1,
+                    content=mem.content,
+                    rationale=mem.rationale,
+                    context=mem.context,
+                    tags=mem.tags,
+                    outcome=mem.outcome,
+                    worked=mem.worked,
+                    change_type="relationship_changed",
+                    change_description=f"Added {direction} '{relationship}' relationship"
+                )
+                session.add(version)
+
             logger.info(f"Created relationship: {source_id} --{relationship}--> {target_id}")
 
             return {

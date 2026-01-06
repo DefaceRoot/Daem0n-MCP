@@ -274,3 +274,31 @@ async def test_mcp_get_memory_versions_missing_project_path():
 
     assert "error" in result
     assert result["error"] == "MISSING_PROJECT_PATH"
+
+
+@pytest.mark.asyncio
+async def test_link_memories_creates_version(memory_manager):
+    """Linking memories should create versions for both memories."""
+    # Create two memories
+    mem1 = await memory_manager.remember(category="decision", content="Decision A")
+    mem2 = await memory_manager.remember(category="pattern", content="Pattern B")
+
+    # Link them
+    await memory_manager.link_memories(
+        source_id=mem1["id"],
+        target_id=mem2["id"],
+        relationship="led_to",
+        description="A led to B"
+    )
+
+    # Check versions
+    v1 = await memory_manager.get_memory_versions(mem1["id"])
+    v2 = await memory_manager.get_memory_versions(mem2["id"])
+
+    # Source should have version for outgoing relationship
+    assert len(v1) == 2
+    assert v1[1]["change_type"] == "relationship_changed"
+
+    # Target should have version for incoming relationship
+    assert len(v2) == 2
+    assert v2[1]["change_type"] == "relationship_changed"
