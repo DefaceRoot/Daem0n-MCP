@@ -6,6 +6,10 @@ This hook runs BEFORE Edit/Write/NotebookEdit tools.
 It checks if Daem0n has memories for the file being modified and
 injects them as context so Claude is aware of past decisions.
 
+Features:
+- Direct file association: recalls memories linked to this specific file
+- Context triggers: auto-recalls based on pattern matching (glob, tag, entity)
+
 Output format: Text injected as context for Claude
 Exit code 0: Success (output added to context)
 """
@@ -56,6 +60,36 @@ def recall_for_file_sync(file_path: str) -> dict | None:
             [
                 sys.executable, "-m", "daem0nmcp.cli",
                 "check", file_path,
+                "--project-path", PROJECT_DIR,
+                "--json"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=PROJECT_DIR
+        )
+
+        if result.returncode == 0 and result.stdout.strip():
+            return json.loads(result.stdout)
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError):
+        pass
+
+    return None
+
+
+def check_triggers_sync(file_path: str) -> dict | None:
+    """
+    Check context triggers via the Daem0n CLI (synchronous).
+
+    Returns triggered context with auto-recalled memories.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "daem0nmcp.cli",
+                "check-triggers", file_path,
                 "--project-path", PROJECT_DIR,
                 "--json"
             ],
@@ -130,6 +164,47 @@ def format_memories_context(memories: dict) -> str:
     return "\n".join(parts)
 
 
+def format_trigger_context(trigger_result: dict) -> str:
+    """Format triggered context as human-readable output.
+
+    The check-triggers command returns:
+    - triggers: list of matched triggers
+    - memories: dict of topic -> recalled memories
+    """
+    parts = []
+
+    triggers = trigger_result.get("triggers", [])
+    memories = trigger_result.get("memories", {})
+
+    if not triggers:
+        return ""
+
+    parts.append("**Auto-recalled from context triggers:**")
+
+    for trigger in triggers[:3]:  # Limit to 3 triggers
+        pattern = trigger.get("pattern", "?")
+        topic = trigger.get("recall_topic", "?")
+        parts.append(f"  Trigger: {pattern} -> recall '{topic}'")
+
+    for topic, recalled in memories.items():
+        # Get warnings first (most important)
+        for mem in recalled.get("warnings", [])[:2]:
+            content = mem.get("content", "")[:120]
+            parts.append(f"    [warning] {content}")
+
+        # Then patterns
+        for mem in recalled.get("patterns", [])[:2]:
+            content = mem.get("content", "")[:120]
+            parts.append(f"    [pattern] {content}")
+
+        # Then decisions
+        for mem in recalled.get("decisions", [])[:1]:
+            content = mem.get("content", "")[:120]
+            parts.append(f"    [decision] {content}")
+
+    return "\n".join(parts)
+
+
 def main():
     """Main hook logic."""
     # Skip if Daem0n not set up
@@ -141,27 +216,36 @@ def main():
     if not file_path:
         sys.exit(0)
 
-    # Recall memories for this file
+    output_parts = []
+    file_name = Path(file_path).name
+
+    # Recall memories for this file (direct file association)
     memories = recall_for_file_sync(file_path)
-    if not memories:
-        sys.exit(0)
+    if memories:
+        # Check if there are any relevant memories
+        has_content = (
+            memories.get("warnings") or
+            memories.get("must_do") or
+            memories.get("must_not") or
+            memories.get("blockers")
+        )
 
-    # Check if there are any relevant memories
-    has_content = (
-        memories.get("warnings") or
-        memories.get("must_do") or
-        memories.get("must_not") or
-        memories.get("blockers")
-    )
+        if has_content:
+            context = format_memories_context(memories)
+            if context:
+                output_parts.append(context)
 
-    if not has_content:
-        sys.exit(0)
+    # Check context triggers for auto-recall based on patterns
+    trigger_result = check_triggers_sync(file_path)
+    if trigger_result and trigger_result.get("total_triggers", 0) > 0:
+        trigger_context = format_trigger_context(trigger_result)
+        if trigger_context:
+            output_parts.append(trigger_context)
 
-    # Format and output context
-    context = format_memories_context(memories)
-    if context:
-        file_name = Path(file_path).name
-        print(f"[Daem0n recalls for {file_name}]\n{context}")
+    # Output combined context
+    if output_parts:
+        print(f"[Daem0n recalls for {file_name}]")
+        print("\n".join(output_parts))
 
     sys.exit(0)
 
