@@ -242,3 +242,35 @@ async def test_mcp_get_community_details(covenant_compliant_project):
 
         assert "community_id" in result
         assert "members" in result
+
+
+@pytest.mark.asyncio
+async def test_hierarchical_recall(memory_manager, temp_storage):
+    """Hierarchical recall should return community summaries first."""
+    from daem0nmcp.communities import CommunityManager
+
+    # Create related memories
+    await memory_manager.remember(
+        category="decision", content="Use JWT for auth",
+        tags=["auth", "jwt"]
+    )
+    await memory_manager.remember(
+        category="pattern", content="Validate JWT on every request",
+        tags=["auth", "jwt", "validation"]
+    )
+
+    # Build communities
+    cm = CommunityManager(memory_manager.db)
+    communities = await cm.detect_communities(temp_storage, min_community_size=2)
+    await cm.save_communities(temp_storage, communities)
+
+    # Hierarchical recall
+    result = await memory_manager.recall_hierarchical(
+        topic="auth",
+        project_path=temp_storage
+    )
+
+    assert "communities" in result
+    assert "memories" in result
+    # Should have at least one auth-related community
+    assert len(result["communities"]) >= 1

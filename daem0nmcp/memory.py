@@ -2149,6 +2149,88 @@ class MemoryManager:
             )
         """
 
+    async def recall_hierarchical(
+        self,
+        topic: str,
+        project_path: Optional[str] = None,
+        include_members: bool = False,
+        limit: int = 10
+    ) -> Dict[str, Any]:
+        """
+        Hierarchical recall - community summaries first, then individual memories.
+
+        Provides a GraphRAG-style layered response:
+        1. Relevant community summaries (high-level overview)
+        2. Individual memories (detailed)
+
+        Args:
+            topic: What you're looking for
+            project_path: Project path for community lookup
+            include_members: If True, include full member content for each community
+            limit: Max results per layer
+
+        Returns:
+            Dict with communities and memories sections
+        """
+        from .communities import CommunityManager
+        from .models import MemoryCommunity
+
+        result = {
+            "topic": topic,
+            "communities": [],
+            "memories": []
+        }
+
+        # Get relevant communities if project_path provided
+        if project_path:
+            async with self.db.get_session() as session:
+                # Search communities by topic in name, summary, or tags
+                query = select(MemoryCommunity).where(
+                    MemoryCommunity.project_path == project_path
+                )
+                communities_result = await session.execute(query)
+                all_communities = communities_result.scalars().all()
+
+                # Filter by topic relevance (simple substring match for now)
+                # TODO: Consider using TF-IDF/semantic similarity for community matching
+                # Currently uses substring match - "authentication" won't match "auth + jwt"
+                topic_lower = topic.lower()
+                relevant_communities = []
+                for c in all_communities:
+                    name_match = topic_lower in c.name.lower()
+                    summary_match = topic_lower in c.summary.lower()
+                    tag_match = any(topic_lower in str(t).lower() for t in (c.tags or []))
+
+                    if name_match or summary_match or tag_match:
+                        comm_dict = {
+                            "id": c.id,
+                            "name": c.name,
+                            "summary": c.summary,
+                            "tags": c.tags,
+                            "member_count": c.member_count,
+                            "level": c.level
+                        }
+
+                        if include_members:
+                            cm = CommunityManager(self.db)
+                            members = await cm.get_community_members(c.id)
+                            comm_dict["members"] = members.get("members", [])
+
+                        relevant_communities.append(comm_dict)
+
+                result["communities"] = relevant_communities[:limit]
+
+        # Also get individual memories via standard recall
+        memories = await self.recall(topic, limit=limit)
+        result["memories"] = {
+            "decisions": memories.get("decisions", []),
+            "patterns": memories.get("patterns", []),
+            "warnings": memories.get("warnings", []),
+            "learnings": memories.get("learnings", [])
+        }
+
+        return result
+
     async def fts_search(
         self,
         query: str,
