@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 import logging
 
-from .models import Base
+from .models import Base, MemoryVersion  # noqa: F401 - MemoryVersion imported for table creation
 
 logger = logging.getLogger(__name__)
 

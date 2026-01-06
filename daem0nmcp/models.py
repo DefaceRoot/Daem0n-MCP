@@ -7,7 +7,7 @@ Tables:
 - memory_relationships: Graph edges between memories for causal reasoning
 """
 
-from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Boolean, LargeBinary, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, JSON, DateTime, Boolean, LargeBinary, Float, ForeignKey, Index
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import relationship as orm_relationship
 from datetime import datetime, timezone
@@ -171,6 +171,11 @@ class MemoryVersion(Base):
 
     # When this version was created
     changed_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Composite index for efficient version lookups
+    __table_args__ = (
+        Index('ix_memory_versions_memory_version', 'memory_id', 'version_number'),
+    )
 
     # ORM relationship
     memory = orm_relationship("Memory", backref="versions")
