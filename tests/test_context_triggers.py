@@ -441,3 +441,132 @@ async def test_check_triggers_glob_patterns(trigger_manager, temp_storage):
         file_path="src/auth/service.py"
     )
     assert len(matches) == 0
+
+
+# ============================================================================
+# MCP Tool Tests - Server Integration
+# ============================================================================
+
+@pytest.fixture
+async def covenant_compliant_project_for_triggers(tmp_path):
+    """Create project that passes communion checks."""
+    from daem0nmcp import server
+    project_path = str(tmp_path)
+    server._project_contexts.clear()
+    await server.get_briefing(project_path=project_path)
+    await server.context_check(description="Test triggers", project_path=project_path)
+    yield project_path
+
+
+@pytest.mark.asyncio
+async def test_mcp_add_context_trigger(covenant_compliant_project_for_triggers):
+    """Test MCP tool for adding context triggers."""
+    from daem0nmcp import server
+
+    result = await server.add_context_trigger(
+        trigger_type="file_pattern",
+        pattern="src/auth/**/*.py",
+        recall_topic="authentication",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    assert result["status"] == "created"
+    assert result["trigger_id"] > 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_context_triggers(covenant_compliant_project_for_triggers):
+    """Test MCP tool for listing context triggers."""
+    from daem0nmcp import server
+
+    # Add a trigger first
+    await server.add_context_trigger(
+        trigger_type="file_pattern",
+        pattern="src/auth/**/*.py",
+        recall_topic="authentication",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    result = await server.list_context_triggers(
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    assert "triggers" in result
+    assert len(result["triggers"]) == 1
+    assert result["triggers"][0]["pattern"] == "src/auth/**/*.py"
+
+
+@pytest.mark.asyncio
+async def test_mcp_remove_context_trigger(covenant_compliant_project_for_triggers):
+    """Test MCP tool for removing context triggers."""
+    from daem0nmcp import server
+
+    # Add a trigger first
+    add_result = await server.add_context_trigger(
+        trigger_type="file_pattern",
+        pattern="src/auth/**/*.py",
+        recall_topic="authentication",
+        project_path=covenant_compliant_project_for_triggers
+    )
+    trigger_id = add_result["trigger_id"]
+
+    # Remove it
+    result = await server.remove_context_trigger(
+        trigger_id=trigger_id,
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    assert result["status"] == "removed"
+
+    # Verify it's gone
+    list_result = await server.list_context_triggers(
+        project_path=covenant_compliant_project_for_triggers
+    )
+    assert len(list_result["triggers"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_check_context_triggers(covenant_compliant_project_for_triggers):
+    """Test MCP tool for checking context triggers."""
+    from daem0nmcp import server
+
+    # Add a trigger
+    await server.add_context_trigger(
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    # Check with matching file
+    result = await server.check_context_triggers(
+        file_path="src/auth/service.py",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    assert "triggers" in result
+    assert len(result["triggers"]) == 1
+    assert result["triggers"][0]["recall_topic"] == "authentication"
+
+
+@pytest.mark.asyncio
+async def test_mcp_check_context_triggers_no_match(covenant_compliant_project_for_triggers):
+    """Test MCP tool returns empty when no triggers match."""
+    from daem0nmcp import server
+
+    # Add a trigger
+    await server.add_context_trigger(
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    # Check with non-matching file
+    result = await server.check_context_triggers(
+        file_path="src/api/routes.py",
+        project_path=covenant_compliant_project_for_triggers
+    )
+
+    assert "triggers" in result
+    assert len(result["triggers"]) == 0

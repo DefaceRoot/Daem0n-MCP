@@ -4664,6 +4664,219 @@ async def backfill_entities(
 
 
 # ============================================================================
+# CONTEXT TRIGGER TOOLS - Auto-recall based on patterns
+# ============================================================================
+
+@mcp.tool()
+@with_request_id
+@requires_communion
+async def add_context_trigger(
+    trigger_type: str,
+    pattern: str,
+    recall_topic: str,
+    recall_categories: Optional[List[str]] = None,
+    priority: int = 0,
+    project_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Create an auto-recall trigger.
+
+    Triggers automatically recall memories when certain patterns match:
+    - file_pattern: Glob pattern matching file paths (e.g., "src/auth/**/*.py")
+    - tag_match: Regex pattern matching memory tags (e.g., "auth|security")
+    - entity_match: Regex pattern matching entity names (e.g., ".*Service$")
+
+    When a trigger matches, the specified topic is automatically recalled.
+
+    Args:
+        trigger_type: One of: file_pattern, tag_match, entity_match
+        pattern: The pattern to match (glob for files, regex for tags/entities)
+        recall_topic: Topic to recall when this trigger matches
+        recall_categories: Optional list of categories to filter recall
+        priority: Higher priority triggers are evaluated first (default: 0)
+        project_path: Project root path (REQUIRED)
+
+    Returns:
+        Status dict with trigger_id
+
+    Examples:
+        add_context_trigger(
+            trigger_type="file_pattern",
+            pattern="src/auth/**/*.py",
+            recall_topic="authentication"
+        )
+
+        add_context_trigger(
+            trigger_type="tag_match",
+            pattern="database|sql",
+            recall_topic="database decisions",
+            recall_categories=["warning", "pattern"]
+        )
+    """
+    if not project_path and not _default_project_path:
+        return _missing_project_path_error()
+
+    project_path = project_path or _default_project_path
+
+    try:
+        from .context_triggers import ContextTriggerManager
+    except ImportError:
+        from daem0nmcp.context_triggers import ContextTriggerManager
+
+    ctx = await get_project_context(project_path)
+    tm = ContextTriggerManager(ctx.db_manager)
+
+    return await tm.add_trigger(
+        project_path=project_path,
+        trigger_type=trigger_type,
+        pattern=pattern,
+        recall_topic=recall_topic,
+        recall_categories=recall_categories,
+        priority=priority
+    )
+
+
+@mcp.tool()
+@with_request_id
+@requires_communion
+async def list_context_triggers(
+    active_only: bool = True,
+    project_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    List all configured context triggers.
+
+    Args:
+        active_only: If True, only return active triggers (default: True)
+        project_path: Project root path (REQUIRED)
+
+    Returns:
+        Dict with list of triggers
+
+    Example:
+        list_context_triggers()  # Get all active triggers
+        list_context_triggers(active_only=False)  # Include inactive
+    """
+    if not project_path and not _default_project_path:
+        return _missing_project_path_error()
+
+    project_path = project_path or _default_project_path
+
+    try:
+        from .context_triggers import ContextTriggerManager
+    except ImportError:
+        from daem0nmcp.context_triggers import ContextTriggerManager
+
+    ctx = await get_project_context(project_path)
+    tm = ContextTriggerManager(ctx.db_manager)
+
+    triggers = await tm.list_triggers(
+        project_path=project_path,
+        active_only=active_only
+    )
+
+    return {
+        "triggers": triggers,
+        "count": len(triggers),
+        "active_only": active_only
+    }
+
+
+@mcp.tool()
+@with_request_id
+@requires_communion
+async def remove_context_trigger(
+    trigger_id: int,
+    project_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Remove a context trigger.
+
+    Args:
+        trigger_id: ID of the trigger to remove
+        project_path: Project root path (REQUIRED)
+
+    Returns:
+        Status dict
+
+    Example:
+        remove_context_trigger(trigger_id=42)
+    """
+    if not project_path and not _default_project_path:
+        return _missing_project_path_error()
+
+    project_path = project_path or _default_project_path
+
+    try:
+        from .context_triggers import ContextTriggerManager
+    except ImportError:
+        from daem0nmcp.context_triggers import ContextTriggerManager
+
+    ctx = await get_project_context(project_path)
+    tm = ContextTriggerManager(ctx.db_manager)
+
+    return await tm.remove_trigger(
+        trigger_id=trigger_id,
+        project_path=project_path
+    )
+
+
+@mcp.tool()
+@with_request_id
+@requires_communion
+async def check_context_triggers(
+    file_path: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    entities: Optional[List[str]] = None,
+    limit: int = 5,
+    project_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Check which triggers match the given context and get auto-recalled memories.
+
+    This is the full auto-recall flow:
+    1. Check which triggers match the context
+    2. For each matching trigger, recall relevant memories
+    3. Return combined results
+
+    Args:
+        file_path: Optional file path to match against file_pattern triggers
+        tags: Optional tags to match against tag_match triggers
+        entities: Optional entity names to match against entity_match triggers
+        limit: Max memories per trigger topic (default: 5)
+        project_path: Project root path (REQUIRED)
+
+    Returns:
+        Dict with matching triggers and their associated memories
+
+    Examples:
+        check_context_triggers(file_path="src/auth/service.py")
+        check_context_triggers(tags=["security", "validation"])
+        check_context_triggers(entities=["UserService", "AuthRepository"])
+    """
+    if not project_path and not _default_project_path:
+        return _missing_project_path_error()
+
+    project_path = project_path or _default_project_path
+
+    try:
+        from .context_triggers import ContextTriggerManager
+    except ImportError:
+        from daem0nmcp.context_triggers import ContextTriggerManager
+
+    ctx = await get_project_context(project_path)
+    tm = ContextTriggerManager(ctx.db_manager)
+
+    return await tm.get_triggered_context(
+        project_path=project_path,
+        file_path=file_path,
+        tags=tags,
+        entities=entities,
+        limit=limit
+    )
+
+
+# ============================================================================
 # MCP RESOURCES - Automatic Context Injection
 # ============================================================================
 # These resources are automatically injected into the context window
