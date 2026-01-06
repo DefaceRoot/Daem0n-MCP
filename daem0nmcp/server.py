@@ -4071,6 +4071,7 @@ async def consolidate_linked_databases(
 
 @mcp.tool()
 @with_request_id
+@requires_communion
 async def set_active_context(
     memory_id: int,
     reason: Optional[str] = None,
@@ -4125,6 +4126,7 @@ async def set_active_context(
 
 @mcp.tool()
 @with_request_id
+@requires_communion
 async def get_active_context(
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -4156,6 +4158,7 @@ async def get_active_context(
 
 @mcp.tool()
 @with_request_id
+@requires_communion
 async def remove_from_active_context(
     memory_id: int,
     project_path: Optional[str] = None
@@ -4186,6 +4189,7 @@ async def remove_from_active_context(
 
 @mcp.tool()
 @with_request_id
+@requires_communion
 async def clear_active_context(
     project_path: Optional[str] = None
 ) -> Dict[str, Any]:
