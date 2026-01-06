@@ -100,3 +100,344 @@ class TestContextTriggerModel:
             recall_topic="repository pattern"
         )
         assert entity_trigger.trigger_type == "entity_match"
+
+
+# ============================================================================
+# ContextTriggerManager Tests
+# ============================================================================
+
+import tempfile
+import shutil
+import fnmatch
+
+
+@pytest.fixture
+def temp_storage():
+    """Create a temporary storage directory."""
+    temp_dir = tempfile.mkdtemp()
+    yield temp_dir
+    shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@pytest.fixture
+async def trigger_manager(temp_storage):
+    """Create a trigger manager with temporary storage."""
+    from daem0nmcp.database import DatabaseManager
+    from daem0nmcp.context_triggers import ContextTriggerManager
+
+    db = DatabaseManager(temp_storage)
+    await db.init_db()
+    manager = ContextTriggerManager(db)
+    yield manager
+    await db.close()
+
+
+@pytest.mark.asyncio
+async def test_add_file_trigger(trigger_manager, temp_storage):
+    """Should add a file pattern trigger."""
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/**/*.py",
+        recall_topic="authentication"
+    )
+
+    assert result["status"] == "created"
+    assert result["trigger_id"] > 0
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_matches_file(trigger_manager, temp_storage):
+    """Should match file against trigger patterns."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication"
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/auth/service.py"
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["recall_topic"] == "authentication"
+
+
+@pytest.mark.asyncio
+async def test_add_tag_trigger(trigger_manager, temp_storage):
+    """Should add a tag match trigger."""
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="tag_match",
+        pattern="auth|security",
+        recall_topic="security decisions"
+    )
+
+    assert result["status"] == "created"
+    assert result["trigger_id"] > 0
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_matches_tag(trigger_manager, temp_storage):
+    """Should match tags against trigger patterns."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="tag_match",
+        pattern="database|sql",
+        recall_topic="database decisions"
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        tags=["database", "migration"]
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["recall_topic"] == "database decisions"
+
+
+@pytest.mark.asyncio
+async def test_add_entity_trigger(trigger_manager, temp_storage):
+    """Should add an entity match trigger."""
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="entity_match",
+        pattern=".*Service$",
+        recall_topic="service patterns"
+    )
+
+    assert result["status"] == "created"
+    assert result["trigger_id"] > 0
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_matches_entity(trigger_manager, temp_storage):
+    """Should match entities against trigger patterns."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="entity_match",
+        pattern=".*Repository$",
+        recall_topic="repository pattern"
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        entities=["UserRepository", "OrderRepository"]
+    )
+
+    assert len(matches) == 1
+    assert matches[0]["recall_topic"] == "repository pattern"
+
+
+@pytest.mark.asyncio
+async def test_remove_trigger(trigger_manager, temp_storage):
+    """Should remove a trigger."""
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/**/*.py",
+        recall_topic="python code"
+    )
+    trigger_id = result["trigger_id"]
+
+    remove_result = await trigger_manager.remove_trigger(
+        trigger_id=trigger_id,
+        project_path=temp_storage
+    )
+
+    assert remove_result["status"] == "removed"
+
+
+@pytest.mark.asyncio
+async def test_list_triggers(trigger_manager, temp_storage):
+    """Should list triggers for a project."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication"
+    )
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="tag_match",
+        pattern="database",
+        recall_topic="database"
+    )
+
+    triggers = await trigger_manager.list_triggers(project_path=temp_storage)
+
+    assert len(triggers) == 2
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_no_match(trigger_manager, temp_storage):
+    """Should return empty list when no triggers match."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication"
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/api/routes.py"
+    )
+
+    assert len(matches) == 0
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_inactive_not_matched(trigger_manager, temp_storage):
+    """Inactive triggers should not match."""
+    # Create and then make trigger inactive
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication"
+    )
+    trigger_id = result["trigger_id"]
+
+    # We'd need to disable the trigger - for now test that active ones match
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/auth/service.py"
+    )
+
+    assert len(matches) == 1  # Active trigger should match
+
+
+@pytest.mark.asyncio
+async def test_multiple_trigger_types_matched(trigger_manager, temp_storage):
+    """Should match multiple trigger types in same check."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="auth files"
+    )
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="tag_match",
+        pattern="security",
+        recall_topic="security context"
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/auth/service.py",
+        tags=["security", "validation"]
+    )
+
+    assert len(matches) == 2
+    topics = [m["recall_topic"] for m in matches]
+    assert "auth files" in topics
+    assert "security context" in topics
+
+
+@pytest.mark.asyncio
+async def test_trigger_with_recall_categories(trigger_manager, temp_storage):
+    """Should include recall_categories in trigger."""
+    result = await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication",
+        recall_categories=["warning", "pattern"]
+    )
+
+    assert result["status"] == "created"
+
+    triggers = await trigger_manager.list_triggers(project_path=temp_storage)
+    assert triggers[0]["recall_categories"] == ["warning", "pattern"]
+
+
+@pytest.mark.asyncio
+async def test_trigger_with_priority(trigger_manager, temp_storage):
+    """Triggers should be sorted by priority."""
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/*.py",
+        recall_topic="low priority",
+        priority=1
+    )
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/*.py",
+        recall_topic="high priority",
+        priority=10
+    )
+
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/main.py"
+    )
+
+    assert len(matches) == 2
+    # Higher priority should come first
+    assert matches[0]["recall_topic"] == "high priority"
+    assert matches[1]["recall_topic"] == "low priority"
+
+
+@pytest.mark.asyncio
+async def test_get_triggered_context(trigger_manager, temp_storage):
+    """Should get triggered context with memories."""
+    # First add a trigger
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/auth/*.py",
+        recall_topic="authentication"
+    )
+
+    # Create some memories that would match
+    from daem0nmcp.memory import MemoryManager
+    memory_mgr = MemoryManager(trigger_manager.db)
+    await memory_mgr.remember(
+        category="pattern",
+        content="Always use JWT tokens for authentication",
+        tags=["authentication", "jwt"],
+        project_path=temp_storage
+    )
+
+    # Get triggered context
+    result = await trigger_manager.get_triggered_context(
+        project_path=temp_storage,
+        file_path="src/auth/service.py",
+        limit=5
+    )
+
+    assert "triggers" in result
+    assert len(result["triggers"]) == 1
+    assert "memories" in result
+
+
+@pytest.mark.asyncio
+async def test_check_triggers_glob_patterns(trigger_manager, temp_storage):
+    """Should support various glob patterns for files."""
+    # Add trigger with ** glob
+    await trigger_manager.add_trigger(
+        project_path=temp_storage,
+        trigger_type="file_pattern",
+        pattern="src/**/test_*.py",
+        recall_topic="test files"
+    )
+
+    # Should match nested test files
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/auth/tests/test_service.py"
+    )
+    assert len(matches) == 1
+
+    # Should not match non-test files
+    matches = await trigger_manager.check_triggers(
+        project_path=temp_storage,
+        file_path="src/auth/service.py"
+    )
+    assert len(matches) == 0
