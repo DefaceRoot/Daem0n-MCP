@@ -114,3 +114,27 @@ async def test_remember_creates_initial_version(memory_manager):
     assert versions[0]["version_number"] == 1
     assert versions[0]["change_type"] == "created"
     assert versions[0]["content"] == "Use PostgreSQL"
+
+
+@pytest.mark.asyncio
+async def test_record_outcome_creates_version(memory_manager):
+    """Recording an outcome should create a new version."""
+    result = await memory_manager.remember(
+        category="decision",
+        content="Use Redis for caching"
+    )
+    memory_id = result["id"]
+
+    await memory_manager.record_outcome(
+        memory_id=memory_id,
+        outcome="Redis worked great, 10x faster",
+        worked=True
+    )
+
+    versions = await memory_manager.get_memory_versions(memory_id)
+
+    assert len(versions) == 2
+    assert versions[1]["version_number"] == 2
+    assert versions[1]["change_type"] == "outcome_recorded"
+    assert versions[1]["outcome"] == "Redis worked great, 10x faster"
+    assert versions[1]["worked"] == True

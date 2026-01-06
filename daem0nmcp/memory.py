@@ -1032,6 +1032,27 @@ class MemoryManager:
             memory.worked = worked
             memory.updated_at = datetime.now(timezone.utc)
 
+            # Get next version number and create outcome version
+            result = await session.execute(
+                select(func.max(MemoryVersion.version_number))
+                .where(MemoryVersion.memory_id == memory_id)
+            )
+            current_max = result.scalar() or 0
+
+            version = MemoryVersion(
+                memory_id=memory_id,
+                version_number=current_max + 1,
+                content=memory.content,
+                rationale=memory.rationale,
+                context=memory.context,
+                tags=memory.tags,
+                outcome=outcome,
+                worked=worked,
+                change_type="outcome_recorded",
+                change_description=f"Outcome: {'worked' if worked else 'failed'}"
+            )
+            session.add(version)
+
             # Update Qdrant metadata with worked status
             if self._qdrant and memory.vector_embedding:
                 embedding_list = vectors.decode(memory.vector_embedding)
