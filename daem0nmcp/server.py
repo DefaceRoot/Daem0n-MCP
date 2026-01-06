@@ -1762,6 +1762,7 @@ async def get_briefing(
     - High-priority rules (what to always check)
     - Failed approaches (what not to repeat)
     - Git changes since last memory (what happened while you were away)
+    - Active context (always-hot memories for current session)
 
     If you provide focus_areas, you'll also get relevant memories for those topics.
 
@@ -1822,16 +1823,21 @@ async def get_briefing(
     ctx.briefed = True
 
     # Get active working context
+    active_context = {"count": 0, "items": [], "max_count": 10}
     try:
-        from .active_context import ActiveContextManager
-    except ImportError:
-        from daem0nmcp.active_context import ActiveContextManager
+        try:
+            from .active_context import ActiveContextManager
+        except ImportError:
+            from daem0nmcp.active_context import ActiveContextManager
 
-    acm = ActiveContextManager(ctx.db_manager)
-    active_context = await acm.get_active_context(ctx.project_path)
+        acm = ActiveContextManager(ctx.db_manager)
+        active_context = await acm.get_active_context(ctx.project_path)
 
-    # Clean up expired items
-    await acm.cleanup_expired(ctx.project_path)
+        # Clean up expired items
+        await acm.cleanup_expired(ctx.project_path)
+    except Exception as e:
+        logger.warning(f"Failed to fetch active context: {e}")
+        active_context["error"] = str(e)
 
     return {
         "status": "ready",
