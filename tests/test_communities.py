@@ -81,3 +81,62 @@ async def test_memory_communities_table_created(temp_storage):
     await db.close()
     assert len(tables) == 1
     assert tables[0][0] == "memory_communities"
+
+
+@pytest.fixture
+async def db_manager(temp_storage):
+    """Shared database manager for community tests."""
+    from daem0nmcp.database import DatabaseManager
+    db = DatabaseManager(temp_storage)
+    await db.init_db()
+    yield db
+    await db.close()
+
+
+@pytest.fixture
+async def community_manager(db_manager):
+    """Create a community manager with shared database."""
+    from daem0nmcp.communities import CommunityManager
+    return CommunityManager(db_manager)
+
+
+@pytest.fixture
+async def memory_manager(db_manager):
+    """Create a memory manager with shared database."""
+    from daem0nmcp.memory import MemoryManager
+    manager = MemoryManager(db_manager)
+    yield manager
+    if manager._qdrant:
+        manager._qdrant.close()
+
+
+@pytest.mark.asyncio
+async def test_detect_communities_by_tags(community_manager, memory_manager):
+    """Should cluster memories that share tags."""
+    # Create memories with overlapping tags
+    await memory_manager.remember(
+        category="decision", content="Use JWT for auth", tags=["auth", "jwt"]
+    )
+    await memory_manager.remember(
+        category="pattern", content="Validate JWT expiry", tags=["auth", "jwt", "validation"]
+    )
+    await memory_manager.remember(
+        category="decision", content="Use Redis for cache", tags=["cache", "redis"]
+    )
+    await memory_manager.remember(
+        category="pattern", content="Cache invalidation strategy", tags=["cache", "redis"]
+    )
+
+    # Detect communities
+    communities = await community_manager.detect_communities(
+        project_path="/test/project",
+        min_community_size=2
+    )
+
+    # Should find at least 2 communities (auth, cache)
+    assert len(communities) >= 2
+
+    # Find the auth community
+    auth_community = next((c for c in communities if "auth" in c["tags"]), None)
+    assert auth_community is not None
+    assert auth_community["member_count"] == 2
