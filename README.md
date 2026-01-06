@@ -25,6 +25,13 @@ Always-hot memory layer that keeps critical information front and center:
 - Failed decisions auto-activate with high priority
 - Max 10 items to prevent context bloat
 
+### Temporal Versioning
+Track how memories evolve over time:
+- Auto-creates versions on memory creation, outcome recording, relationship changes
+- `get_memory_versions(memory_id)` - Get full version history
+- `get_memory_at_time(memory_id, timestamp)` - Query historical state
+- Enables questions like "What did we believe about X last month?"
+
 ## What's New in v2.13.0
 
 - **Passive Capture (Auto-Remember)**: Memories without manual calls
@@ -200,7 +207,7 @@ Or use `start_daem0nmcp_server.bat`
 
 3. **Start Claude Code** (after server is running)
 
-## Core Tools (36 Total)
+## Core Tools (38 Total)
 
 ### Memory Tools
 
@@ -216,6 +223,8 @@ Or use `start_daem0nmcp_server.bat`
 | `pin_memory` | Pin memories to prevent pruning and boost relevance |
 | `archive_memory` | Hide memories from recall while preserving history |
 | `compact_memories` | Consolidate old episodic memories into summaries |
+| `get_memory_versions` | Get full version history for a memory |
+| `get_memory_at_time` | Query historical state of a memory at a specific time |
 
 ### Rule Tools
 
@@ -643,4 +652,4 @@ rm -rf .daem0nmcp/
                               ~ Daem0n
 ```
 
-*Daem0nMCP v2.14.0: Active Working Context—MemGPT-style hot memory layer, plus all previous features.*
+*Daem0nMCP v2.14.0: Active Working Context and Temporal Versioning—MemGPT-style hot memory layer plus memory history tracking.*
