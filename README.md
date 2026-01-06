@@ -48,6 +48,15 @@ Auto-extract and link code entities from memory content:
 - `backfill_entities()` - Extract entities from existing memories
 - Enables queries like "show everything about UserService"
 
+### Contextual Recall Triggers (Knowledge Graph MCP-style)
+Auto-recall memories without explicit calls based on context patterns:
+- `add_context_trigger(pattern, topic)` - Define auto-recall rules
+- `check_context_triggers(file_path)` - Get triggered context
+- `list_context_triggers()` / `remove_context_trigger(id)`
+- Supports file patterns, tag matching, entity matching
+- Integrated with pre-edit hooks for automatic injection
+- MCP Resource: `daem0n://triggered/{file_path}`
+
 ## What's New in v2.13.0
 
 - **Passive Capture (Auto-Remember)**: Memories without manual calls
