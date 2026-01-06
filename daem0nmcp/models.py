@@ -312,3 +312,41 @@ class ProjectLink(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ActiveContextItem(Base):
+    """
+    Items in the active working context (always-hot memories).
+
+    These memories are auto-injected into tool responses and briefings.
+    Inspired by MemGPT's core memory concept.
+
+    Use cases:
+    - Critical decisions that must inform all work
+    - Active warnings that should never be forgotten
+    - Current focus areas
+
+    Max items per project: 10 (prevents context bloat)
+    """
+    __tablename__ = "active_context"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # Which project this belongs to
+    project_path = Column(String, nullable=False, index=True)
+
+    # The memory to keep in active context
+    memory_id = Column(Integer, ForeignKey("memories.id", ondelete="CASCADE"), nullable=False)
+
+    # Priority for ordering (higher = more important, shown first)
+    priority = Column(Integer, default=0)
+
+    # Why this was added to active context
+    reason = Column(Text, nullable=True)
+
+    # Timestamps
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=True)  # Optional auto-expiry
+
+    # ORM relationship
+    memory = orm_relationship("Memory")
