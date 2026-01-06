@@ -1821,6 +1821,18 @@ async def get_briefing(
     # Mark this project as briefed (Sacred Covenant: communion complete)
     ctx.briefed = True
 
+    # Get active working context
+    try:
+        from .active_context import ActiveContextManager
+    except ImportError:
+        from daem0nmcp.active_context import ActiveContextManager
+
+    acm = ActiveContextManager(ctx.db_manager)
+    active_context = await acm.get_active_context(ctx.project_path)
+
+    # Clean up expired items
+    await acm.cleanup_expired(ctx.project_path)
+
     return {
         "status": "ready",
         "statistics": stats,
@@ -1832,6 +1844,7 @@ async def get_briefing(
         "focus_areas": focus_memories,
         "bootstrap": bootstrap_result,
         "linked_projects": linked_summary,
+        "active_context": active_context,
         "message": message
     }
 

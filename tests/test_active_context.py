@@ -375,3 +375,31 @@ class TestActiveContextMCPTools:
 
         assert "error" in result
         assert result["error"] == "MISSING_PROJECT_PATH"
+
+
+class TestBriefingIncludesActiveContext:
+    """Test that get_briefing includes active context."""
+
+    @pytest.mark.asyncio
+    async def test_briefing_includes_active_context(self, covenant_compliant_project):
+        """get_briefing should include active context items."""
+        from daem0nmcp import server
+
+        # Create and activate a memory
+        mem = await server.remember(
+            category="warning",
+            content="Database migration in progress",
+            project_path=covenant_compliant_project
+        )
+        await server.set_active_context(
+            memory_id=mem["id"],
+            reason="Ongoing migration",
+            project_path=covenant_compliant_project
+        )
+
+        # Get briefing
+        briefing = await server.get_briefing(project_path=covenant_compliant_project)
+
+        assert "active_context" in briefing
+        assert briefing["active_context"]["count"] == 1
+        assert briefing["active_context"]["items"][0]["memory_id"] == mem["id"]
