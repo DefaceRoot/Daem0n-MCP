@@ -166,7 +166,7 @@ You should invoke the memory system when you:
 
 ```python
 # Session start
-daem0nmcp_get_briefing(project_path="C:/Users/Colin/Documents/Projects/Daem0n-MCP")
+daem0nmcp_get_briefing(project_path="<current_working_directory>")
 
 # Before changes
 daem0nmcp_context_check(description="Adding new feature X", project_path="...")
