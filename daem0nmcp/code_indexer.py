@@ -11,7 +11,7 @@ Uses tree-sitter-language-pack for cross-language parsing without compilation.
 import hashlib
 import logging
 from pathlib import Path
-from typing import Generator, List, Optional, Dict, Any
+from typing import Generator, List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -195,6 +195,11 @@ class TreeSitterIndexer:
         self._parsers: Dict[str, Any] = {}
         self._languages: Dict[str, Any] = {}
         self._available = _check_tree_sitter_available()
+        # Parse tree cache
+        self._parse_cache: Dict[str, Tuple[str, Any]] = {}  # path -> (hash, tree)
+        self._cache_maxsize: int = 200
+        self._cache_hits: int = 0
+        self._cache_misses: int = 0
 
     @property
     def available(self) -> bool:
@@ -216,6 +221,52 @@ class TreeSitterIndexer:
                 return None, None
 
         return self._parsers.get(lang), self._languages.get(lang)
+
+    def _get_cached_tree(self, file_path: Path, source: bytes, lang: str):
+        """Get parse tree from cache or parse and cache."""
+        content_hash = hashlib.md5(source).hexdigest()
+        cache_key = str(file_path)
+
+        # Check cache
+        if cache_key in self._parse_cache:
+            cached_hash, cached_tree = self._parse_cache[cache_key]
+            if cached_hash == content_hash:
+                self._cache_hits += 1
+                return cached_tree
+
+        # Cache miss - parse
+        self._cache_misses += 1
+        parser, language = self.get_parser(lang)
+        if parser is None:
+            return None
+
+        tree = parser.parse(source)
+
+        # Evict oldest if at capacity
+        if len(self._parse_cache) >= self._cache_maxsize:
+            oldest_key = next(iter(self._parse_cache))
+            del self._parse_cache[oldest_key]
+
+        self._parse_cache[cache_key] = (content_hash, tree)
+        return tree
+
+    @property
+    def cache_stats(self) -> Dict[str, Any]:
+        """Return cache statistics."""
+        total = self._cache_hits + self._cache_misses
+        return {
+            "size": len(self._parse_cache),
+            "maxsize": self._cache_maxsize,
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": self._cache_hits / total if total > 0 else 0.0
+        }
+
+    def clear_cache(self) -> int:
+        """Clear the parse tree cache."""
+        count = len(self._parse_cache)
+        self._parse_cache.clear()
+        return count
 
     def _extract_imports(self, tree, language, lang: str, source: bytes) -> List[str]:
         """Extract import statements from a parsed file."""
@@ -271,10 +322,14 @@ class TreeSitterIndexer:
 
         try:
             source = file_path.read_bytes()
-            parser, language = self.get_parser(lang)
-            if parser is None or language is None:
+            # Use cached tree if available
+            tree = self._get_cached_tree(file_path, source, lang)
+            if tree is None:
                 return
-            tree = parser.parse(source)
+            # Get language for query operations
+            _, language = self.get_parser(lang)
+            if language is None:
+                return
         except Exception as e:
             logger.debug(f"Failed to parse {file_path}: {e}")
             return
