@@ -1034,7 +1034,7 @@ class CodeIndexManager:
         Index a single file only if its content has changed.
 
         Returns:
-            Dict with changed, entities_count, file_path, reason
+            Dict with changed, entities_count, reason, or error
         """
         if file_path.suffix.lower() not in LANGUAGE_CONFIG:
             return {'changed': False, 'reason': 'unsupported_extension'}
@@ -1067,18 +1067,23 @@ class CodeIndexManager:
         if self.db is not None:
             await self._store_file_entities(entities, project_str, rel_path, current_hash)
 
+        if self.qdrant is not None:
+            await self._index_in_qdrant(entities)
+
         return {'changed': True, 'entities_count': len(entities)}
 
     async def _get_stored_hash(self, project_path: str, file_path: str) -> Optional[str]:
         """Get stored content hash for a file."""
         from .models import FileHash
-        from sqlalchemy import select
+        from sqlalchemy import select, and_
 
         async with self.db.get_session() as session:
             result = await session.execute(
                 select(FileHash.content_hash).where(
-                    FileHash.project_path == project_path,
-                    FileHash.file_path == file_path
+                    and_(
+                        FileHash.project_path == project_path,
+                        FileHash.file_path == file_path
+                    )
                 )
             )
             row = result.scalar_one_or_none()
@@ -1130,8 +1135,10 @@ class CodeIndexManager:
             # Upsert file hash
             existing = await session.execute(
                 select(FileHash).where(
-                    FileHash.project_path == project_path,
-                    FileHash.file_path == file_path
+                    and_(
+                        FileHash.project_path == project_path,
+                        FileHash.file_path == file_path
+                    )
                 )
             )
             fh = existing.scalar_one_or_none()
