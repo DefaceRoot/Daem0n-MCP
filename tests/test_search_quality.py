@@ -119,11 +119,13 @@ class TestHybridWeightWiring:
 
     def test_memory_uses_config_weight(self, monkeypatch):
         """MemoryManager should use config hybrid weight."""
+        import importlib
         monkeypatch.setenv("DAEM0NMCP_HYBRID_VECTOR_WEIGHT", "0.7")
 
-        # Force reload of settings
-        from daem0nmcp import config
+        # Force reload of settings and vectors module
+        from daem0nmcp import config, vectors
         config.settings = config.Settings()
+        importlib.reload(vectors)
 
         from daem0nmcp.vectors import HybridSearch
         from daem0nmcp.similarity import TFIDFIndex
