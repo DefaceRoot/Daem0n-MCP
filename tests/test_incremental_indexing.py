@@ -1,8 +1,5 @@
 """Tests for Iteration 3: Incremental Indexing."""
 
-import pytest
-from datetime import datetime, timezone
-
 
 class TestFileHashModel:
     """Test FileHash model."""
