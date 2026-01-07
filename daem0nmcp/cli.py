@@ -40,6 +40,18 @@ from .memory import MemoryManager
 from .rules import RulesEngine
 
 
+def safe_print(text: str, file=None) -> None:
+    """Print text safely, handling Unicode encoding errors on Windows."""
+    output = file or sys.stdout
+    try:
+        print(text, file=output)
+    except UnicodeEncodeError:
+        # Replace unencodable characters with ASCII equivalents or ?
+        encoding = output.encoding or 'utf-8'
+        safe_text = text.encode(encoding, errors='replace').decode(encoding, errors='replace')
+        print(safe_text, file=output)
+
+
 async def check_file(filepath: str, db: DatabaseManager, memory: MemoryManager, rules: RulesEngine) -> dict:
     """Check a file against memories and rules."""
     await db.init_db()
@@ -185,14 +197,14 @@ async def run_precommit(checker, staged_files: list, project_path: str, interact
     if result["blocks"]:
         print("BLOCKED: The following issues must be resolved:\n")
         for block in result["blocks"]:
-            print(f"  [{block['type']}] {block['message']}")
+            safe_print(f"  [{block['type']}] {block['message']}")
         print()
 
     # Print warnings
     if result["warnings"]:
         print("WARNINGS:\n")
         for warn in result["warnings"]:
-            print(f"  {warn['message']}")
+            safe_print(f"  {warn['message']}")
         print()
 
     # Clean result
@@ -358,7 +370,7 @@ def main():
             print(f"Total memories: {result.get('total_memories', 0)}")
             print(f"By category: {result.get('by_category', {})}")
             if result.get('learning_insights', {}).get('suggestion'):
-                print(f"Suggestion: {result['learning_insights']['suggestion']}")
+                safe_print(f"Suggestion: {result['learning_insights']['suggestion']}")
 
     elif args.command == "scan-todos":
         # Import here to avoid circular imports
@@ -374,7 +386,7 @@ def main():
         else:
             print(f"Found {len(todos)} TODO/FIXME items:")
             for todo in todos[:20]:  # Limit output
-                print(f"  [{todo['type']}] {todo['file']}:{todo['line']} - {todo['content'][:60]}")
+                safe_print(f"  [{todo['type']}] {todo['file']}:{todo['line']} - {todo['content'][:60]}")
             if len(todos) > 20:
                 print(f"  ... and {len(todos) - 20} more")
 
@@ -393,10 +405,10 @@ def main():
                 print("\nMigration complete:")
                 print(f"  Schema migrations: {result['schema_migrations']}")
                 for m in result.get('applied', []):
-                    print(f"    - {m}")
+                    safe_print(f"    - {m}")
                 print(f"  Vectors backfilled: {result['vectors_backfilled']}")
                 print(f"  Vectors available: {result['vectors_available']}")
-                print(f"\n{result['message']}")
+                safe_print(f"\n{result['message']}")
         else:
             count, applied = run_migrations(db_path)
             if args.json:
@@ -434,7 +446,7 @@ def main():
             for mem in result['pending_decisions'][:10]:
                 age = mem.get('age_hours', 0)
                 status = "BLOCKING" if age > 24 else "recent"
-                print(f"  [{status}] #{mem['id']}: {mem['content'][:60]} ({age}h old)")
+                safe_print(f"  [{status}] #{mem['id']}: {mem['content'][:60]} ({age}h old)")
 
             if len(result['pending_decisions']) > 10:
                 print(f"  ... and {len(result['pending_decisions']) - 10} more")
@@ -482,9 +494,9 @@ def main():
             if result.get("success"):
                 status = "SUCCESS" if worked else "FAILED"
                 print(f"Recorded outcome for memory #{args.memory_id}: {status}")
-                print(f"  Outcome: {args.outcome}")
+                safe_print(f"  Outcome: {args.outcome}")
             else:
-                print(f"Error: {result.get('error')}", file=sys.stderr)
+                safe_print(f"Error: {result.get('error')}", file=sys.stderr)
                 sys.exit(1)
 
     elif args.command == "install-hooks":
@@ -618,7 +630,7 @@ def main():
             print(f"  Project: {result.get('project', target_path)}")
 
             if result.get('error'):
-                print(f"\nError: {result['error']}")
+                safe_print(f"\nError: {result['error']}")
                 sys.exit(1)
 
     elif args.command == "remember":
@@ -682,7 +694,7 @@ def main():
                     print(f"\nTopic '{topic}':")
                     for cat in ["warnings", "decisions", "patterns", "learnings"]:
                         for mem in memories.get(cat, [])[:3]:
-                            print(f"  [{cat}] {mem.get('content', '')[:60]}...")
+                            safe_print(f"  [{cat}] {mem.get('content', '')[:60]}...")
             else:
                 print("No triggers matched.")
 
