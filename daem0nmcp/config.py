@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     hybrid_vector_weight: float = Field(default=0.3, ge=0.0, le=1.0)  # 0.0 = TF-IDF only, 1.0 = vectors only
     search_diversity_max_per_file: int = Field(default=3, ge=0)  # Max results from same source file (0=unlimited)
 
+    # Embedding Model
+    embedding_model: str = "all-MiniLM-L6-v2"
+
+    # Code Indexing
+    parse_tree_cache_maxsize: int = 200
+    index_languages: List[str] = []  # Empty = all supported
+
     def _migrate_legacy_storage(self, project_path: Path, new_storage: Path) -> bool:
         """
         Migrate data from legacy .devilmcp directory to .daem0nmcp.

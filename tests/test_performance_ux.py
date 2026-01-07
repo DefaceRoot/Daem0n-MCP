@@ -43,3 +43,26 @@ class TestParseTreeCache:
 
         # Both should be misses (content changed)
         assert indexer.cache_stats["misses"] >= 2
+
+
+class TestExtendedConfig:
+    """Test extended configuration options."""
+
+    def test_default_embedding_model(self):
+        """Default embedding model is all-MiniLM-L6-v2."""
+        from daem0nmcp.config import Settings
+        settings = Settings()
+        assert settings.embedding_model == "all-MiniLM-L6-v2"
+
+    def test_default_parse_cache_maxsize(self):
+        """Default parse cache maxsize is 200."""
+        from daem0nmcp.config import Settings
+        settings = Settings()
+        assert settings.parse_tree_cache_maxsize == 200
+
+    def test_config_from_env(self, monkeypatch):
+        """Config can be set via environment."""
+        monkeypatch.setenv("DAEM0NMCP_PARSE_TREE_CACHE_MAXSIZE", "500")
+        from daem0nmcp.config import Settings
+        settings = Settings()
+        assert settings.parse_tree_cache_maxsize == 500
