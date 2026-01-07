@@ -7,7 +7,6 @@ Usage:
     python -m daem0nmcp.cli [--json] [--project-path PATH] <command>
 
     python -m daem0nmcp.cli check <filepath>
-    python -m daem0nmcp.cli check-triggers <filepath>
     python -m daem0nmcp.cli briefing
     python -m daem0nmcp.cli scan-todos [--auto-remember] [--path PATH]
     python -m daem0nmcp.cli migrate [--backfill-vectors]
@@ -335,10 +334,6 @@ def main():
     remember_parser.add_argument("--file-path", default=None, help="Associated file path")
     remember_parser.add_argument("--tags", default=None, help="Comma-separated tags")
 
-    # check-triggers command (for pre-edit hook)
-    triggers_parser = subparsers.add_parser("check-triggers", help="Check context triggers for a file")
-    triggers_parser.add_argument("filepath", help="File path to check triggers for")
-
     args = parser.parse_args()
 
     if not args.command:
@@ -664,39 +659,6 @@ def main():
             print(json.dumps(result, default=str))
         else:
             print(f"Memory created: ID {result.get('id')}")
-
-    elif args.command == "check-triggers":
-        # Check context triggers for a file (for pre-edit hook)
-        from .context_triggers import ContextTriggerManager
-
-        project_path = args.project_path or os.getcwd()
-
-        async def _check_triggers():
-            await db.init_db()
-            tm = ContextTriggerManager(db)
-            return await tm.get_triggered_context(
-                project_path=project_path,
-                file_path=args.filepath,
-                limit=5
-            )
-
-        result = asyncio.run(_check_triggers())
-
-        if args.json:
-            print(json.dumps(result, default=str))
-        else:
-            if result.get("total_triggers", 0) > 0:
-                print(f"Matched {result['total_triggers']} trigger(s):")
-                for trigger in result.get("triggers", []):
-                    print(f"  [{trigger['trigger_type']}] {trigger['pattern']} -> {trigger['recall_topic']}")
-
-                for topic, memories in result.get("memories", {}).items():
-                    print(f"\nTopic '{topic}':")
-                    for cat in ["warnings", "decisions", "patterns", "learnings"]:
-                        for mem in memories.get(cat, [])[:3]:
-                            safe_print(f"  [{cat}] {mem.get('content', '')[:60]}...")
-            else:
-                print("No triggers matched.")
 
 
 if __name__ == "__main__":
