@@ -161,6 +161,7 @@ Write-Host "[4/6] Creating opencode.json..." -ForegroundColor Yellow
 $opencodeJson = Join-Path $ProjectPath "opencode.json"
 $opencodeConfig = @{
     '$schema' = "https://opencode.ai/config.json"
+    plugin = @("file://.opencode/plugin/daem0nmcp/dist/index.js")
     mcp = @{
         daem0nmcp = @{
             type = "remote"

@@ -44,6 +44,23 @@ export const DECISION_PATTERNS: Array<{ pattern: RegExp; category: ExtractedDeci
 
 export const FILE_MENTION_PATTERN = /(?:in|to|from|at|file)\s+[`'"]?([a-zA-Z0-9_/.-]+\.[a-zA-Z0-9]+)[`'"]?/i
 
+/** Phase 7: Extract all file mentions from text */
+export function extractFileMentions(text: string): string[] {
+  const mentions: Set<string> = new Set()
+  const pattern = /[`'"]?([a-zA-Z0-9_/.-]+\.(?:py|ts|js|tsx|jsx|go|rs|java|rb|php|yaml|yml|json|toml|sql|md))[`'"]?/gi
+  
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(text)) !== null) {
+    const filePath = match[1]
+    // Skip common false positives
+    if (!filePath.match(/^[0-9.]+$/) && filePath.length > 3) {
+      mentions.add(filePath)
+    }
+  }
+  
+  return Array.from(mentions)
+}
+
 export function hasCompletionSignal(text: string): boolean {
   return COMPLETION_PATTERNS.some(pattern => pattern.test(text))
 }
@@ -96,4 +113,148 @@ export function extractDecisions(text: string, maxDecisions: number = 5): Extrac
   }
 
   return decisions
+}
+
+/**
+ * Phase 8: Evidence detection result
+ */
+export interface EvidenceResult {
+  hasEvidence: boolean
+  worked: boolean | null  // null = inconclusive
+  summary: string
+  confidence: "high" | "medium" | "low"
+}
+
+/** Success patterns for bash output (Phase 8) */
+const SUCCESS_PATTERNS = [
+  /exit\s+code[:\s]+0/i,
+  /\b(?:all\s+)?tests?\s+pass(?:ed|ing)?\b/i,
+  /\bpassed\b.*\d+\s+test/i,
+  /\b\d+\s+pass(?:ed|ing)?\b/i,
+  /\bbuild\s+succeed(?:ed|s)?\b/i,
+  /\bsuccess(?:fully)?\b/i,
+  /\bcompleted?\s+successfully\b/i,
+  /\bno\s+errors?\b/i,
+  /\bOK\b\s*\(\d+\s+test/i,
+  /\bpytest.*\s+passed\b/i,
+  /✓.*\bpass(?:ed)?\b/i,
+  /PASSED/,
+]
+
+/** Failure patterns for bash output (Phase 8) */
+const FAILURE_PATTERNS = [
+  /exit\s+code[:\s]+[1-9]/i,
+  /\bfail(?:ed|ure|ing)?\b/i,
+  /\bFAILED\b/,
+  /\berror[:\s]/i,
+  /\bTraceback\b/i,
+  /\bexception\b/i,
+  /\bAssertionError\b/i,
+  /\bTypeError\b/i,
+  /\bValueError\b/i,
+  /\bSyntaxError\b/i,
+  /\bModuleNotFoundError\b/i,
+  /\bImportError\b/i,
+  /\btest.*\bfailed\b/i,
+  /\d+\s+failed/i,
+  /✗.*\bfail(?:ed)?\b/i,
+  /build\s+failed/i,
+]
+
+/**
+ * Detect evidence of success or failure from bash output
+ * 
+ * Phase 8: Parse bash output for strong success/failure signals
+ * Used for automatic outcome recording
+ */
+export function detectEvidence(output: string): EvidenceResult {
+  if (!output || output.length < 10) {
+    return { hasEvidence: false, worked: null, summary: "", confidence: "low" }
+  }
+
+  // Count success and failure signals
+  let successCount = 0
+  let failureCount = 0
+  const successMatches: string[] = []
+  const failureMatches: string[] = []
+
+  for (const pattern of SUCCESS_PATTERNS) {
+    const match = pattern.exec(output)
+    if (match) {
+      successCount++
+      successMatches.push(match[0].slice(0, 30))
+    }
+  }
+
+  for (const pattern of FAILURE_PATTERNS) {
+    const match = pattern.exec(output)
+    if (match) {
+      failureCount++
+      failureMatches.push(match[0].slice(0, 30))
+    }
+  }
+
+  // Determine outcome based on evidence
+  if (failureCount > 0 && successCount === 0) {
+    // Clear failure
+    return {
+      hasEvidence: true,
+      worked: false,
+      summary: `Failed: ${failureMatches.slice(0, 2).join(", ")}`,
+      confidence: failureCount >= 2 ? "high" : "medium",
+    }
+  }
+
+  if (successCount > 0 && failureCount === 0) {
+    // Clear success
+    return {
+      hasEvidence: true,
+      worked: true,
+      summary: `Success: ${successMatches.slice(0, 2).join(", ")}`,
+      confidence: successCount >= 2 ? "high" : "medium",
+    }
+  }
+
+  if (successCount > 0 && failureCount > 0) {
+    // Mixed signals - be conservative, report failure
+    if (failureCount > successCount) {
+      return {
+        hasEvidence: true,
+        worked: false,
+        summary: `Mixed but more failures: ${failureMatches[0]}`,
+        confidence: "low",
+      }
+    }
+    // Don't auto-record on mixed signals with more successes
+    return { hasEvidence: false, worked: null, summary: "Mixed signals", confidence: "low" }
+  }
+
+  // No evidence
+  return { hasEvidence: false, worked: null, summary: "", confidence: "low" }
+}
+
+/**
+ * Check if output appears to be from a test/build command
+ */
+export function isTestOrBuildOutput(command: string, output: string): boolean {
+  const testBuildPatterns = [
+    /\bpytest\b/i,
+    /\bjest\b/i,
+    /\bmocha\b/i,
+    /\bvitest\b/i,
+    /\bnpm\s+(run\s+)?test\b/i,
+    /\byarn\s+test\b/i,
+    /\bgo\s+test\b/i,
+    /\bcargo\s+test\b/i,
+    /\bmake\s+test\b/i,
+    /\bnpm\s+run\s+build\b/i,
+    /\byarn\s+build\b/i,
+    /\bcargo\s+build\b/i,
+    /\btsc\b/i,
+    /\bcompile\b/i,
+    /\bbuild\b/i,
+  ]
+  
+  const combined = `${command} ${output}`.toLowerCase()
+  return testBuildPatterns.some(p => p.test(combined))
 }

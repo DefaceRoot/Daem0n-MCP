@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": ["file://.opencode/plugin/daem0nmcp/dist/index.js"],
   "mcp": {
     "daem0nmcp": {
       "type": "remote",

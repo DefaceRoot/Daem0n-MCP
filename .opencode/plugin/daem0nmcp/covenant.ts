@@ -1,10 +1,82 @@
-import type { SessionState, CovenantViolation } from "./types"
+import type { SessionState, CovenantViolation, ServerStatus, GoalProfile } from "./types"
 import {
   COVENANT_EXEMPT_TOOLS,
   COMMUNION_REQUIRED_TOOLS,
   COUNSEL_REQUIRED_TOOLS,
   COUNSEL_TTL_MS,
+  MUTATING_HOST_TOOLS,
 } from "./types"
+
+/**
+ * Phase 4: Check if a tool is a mutating host tool that requires covenant enforcement
+ */
+export function isMutatingHostTool(toolName: string): boolean {
+  return MUTATING_HOST_TOOLS.has(toolName)
+}
+
+/**
+ * Phase 4: Check if hard mode is enabled (throws instead of auto-fixing)
+ * Default: false (auto-fix mode)
+ */
+export function isHardModeEnabled(): boolean {
+  return process.env.DAEM0NMCP_HARD_MODE === "true" || process.env.DAEM0NMCP_HARD_MODE === "1"
+}
+
+/**
+ * Phase 4: Check if counsel needs to be refreshed based on TTL
+ * Returns the age in ms if refresh needed, or null if still valid
+ */
+export function needsCounselRefresh(state: SessionState): number | null {
+  if (state.contextChecks.length === 0) {
+    return Infinity // No counsel yet - definitely needs refresh
+  }
+
+  const now = Date.now()
+  let mostRecentAge: number | null = null
+
+  for (const check of state.contextChecks) {
+    const checkTime = check.timestamp.getTime()
+    const age = now - checkTime
+    if (mostRecentAge === null || age < mostRecentAge) {
+      mostRecentAge = age
+    }
+  }
+
+  if (mostRecentAge === null || mostRecentAge > COUNSEL_TTL_MS) {
+    return mostRecentAge ?? Infinity
+  }
+
+  return null // Counsel is still valid
+}
+
+/**
+ * Generate a context check description that incorporates goal profile
+ * Phase 3: Use goal profile for relevance-gated context checks
+ */
+export function generateContextCheckDescription(
+  toolName: string,
+  filePath: string | undefined,
+  goalProfile: GoalProfile | undefined
+): string {
+  const parts: string[] = [`About to use ${toolName}`]
+
+  if (filePath) {
+    parts.push(`on ${filePath}`)
+  }
+
+  if (goalProfile && goalProfile.focusAreas.length > 0) {
+    parts.push(`for: ${goalProfile.focusAreas.slice(0, 3).join(", ")}`)
+  }
+
+  return parts.join(" ")
+}
+
+/**
+ * Check if server is offline and enforcement should be skipped
+ */
+export function isServerOffline(status: ServerStatus): boolean {
+  return status === "offline"
+}
 
 export function createCommunionViolation(projectPath: string): CovenantViolation {
   return {
@@ -139,6 +211,11 @@ export function evaluateToolGate(
   state: SessionState,
   projectPath: string
 ): { allow: true } | { allow: false; violation: CovenantViolation } {
+  // Skip all enforcement if server is offline (defense in depth)
+  if (isServerOffline(state.serverStatus)) {
+    return { allow: true }
+  }
+
   const mcpToolName = extractMcpToolName(tool)
   
   if (!mcpToolName) {
@@ -170,6 +247,7 @@ export function evaluateToolGate(
 
 export function markCommunionComplete(state: SessionState): void {
   state.briefed = true
+  state.briefedAt = new Date()
 }
 
 export function markCounselComplete(state: SessionState, topic: string): void {
