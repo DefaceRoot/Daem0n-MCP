@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Generator, List, Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 
+from .config import settings
+
 logger = logging.getLogger(__name__)
 
 # Language configuration: file extension -> tree-sitter language name
@@ -197,7 +199,7 @@ class TreeSitterIndexer:
         self._available = _check_tree_sitter_available()
         # Parse tree cache
         self._parse_cache: Dict[str, Tuple[str, Any]] = {}  # path -> (hash, tree)
-        self._cache_maxsize: int = 200
+        self._cache_maxsize: int = settings.parse_tree_cache_maxsize
         self._cache_hits: int = 0
         self._cache_misses: int = 0
 

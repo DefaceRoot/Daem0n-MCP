@@ -32,8 +32,8 @@ def _get_model() -> SentenceTransformer:
     global _model
 
     if _model is None:
-        logger.info("Loading embedding model (all-MiniLM-L6-v2)...")
-        _model = SentenceTransformer('all-MiniLM-L6-v2')
+        logger.info(f"Loading embedding model ({settings.embedding_model})...")
+        _model = SentenceTransformer(settings.embedding_model)
         logger.info("Embedding model loaded.")
 
     return _model

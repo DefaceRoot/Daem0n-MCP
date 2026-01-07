@@ -66,3 +66,9 @@ class TestExtendedConfig:
         from daem0nmcp.config import Settings
         settings = Settings()
         assert settings.parse_tree_cache_maxsize == 500
+
+    def test_default_index_languages(self):
+        """Default index_languages is empty list."""
+        from daem0nmcp.config import Settings
+        settings = Settings()
+        assert settings.index_languages == []
